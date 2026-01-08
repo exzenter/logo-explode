@@ -112,25 +112,101 @@
 
         // 1. Setup Overlay
         const overlay = createOverlay();
-        const clone = cloneLogo(sourceEl);
+
+        // Check if this is an Icon Grid tile (has .icon-grid-gradient)
+        const isIconGridTile = !!sourceEl.querySelector('.icon-grid-gradient');
+
+        let clone, sourceRect, elementToHide;
+
+        if (isIconGridTile) {
+            // ICON GRID: Clone SVG and wrap in div (like regular blocks)
+            const gradientSvg = sourceEl.querySelector('.icon-grid-gradient');
+            const fullRect = gradientSvg.getBoundingClientRect();
+
+            // Get the tight bounding box of the actual visual content
+            const bbox = gradientSvg.getBBox();
+            const viewBox = gradientSvg.viewBox.baseVal;
+
+            // Calculate where the visual content actually is on screen
+            const visualRect = {
+                left: fullRect.left + (bbox.x / viewBox.width) * fullRect.width,
+                top: fullRect.top + (bbox.y / viewBox.height) * fullRect.height,
+                width: (bbox.width / viewBox.width) * fullRect.width,
+                height: (bbox.height / viewBox.height) * fullRect.height
+            };
+
+            // Use the visual rect as our source
+            sourceRect = visualRect;
+
+            // Clone the SVG and crop its viewBox
+            const svgClone = gradientSvg.cloneNode(true);
+            svgClone.setAttribute('viewBox', `${bbox.x} ${bbox.y} ${bbox.width} ${bbox.height}`);
+            svgClone.setAttribute('preserveAspectRatio', 'none');
+            svgClone.removeAttribute('width');
+            svgClone.removeAttribute('height');
+            svgClone.style.width = '100%';
+            svgClone.style.height = '100%';
+            svgClone.style.display = 'block';
+            svgClone.style.maxWidth = 'none';
+            svgClone.style.maxHeight = 'none';
+
+            // Wrap in a div (like regular blocks) - this is what we animate
+            clone = document.createElement('div');
+            clone.classList.add('transition-clone');
+            clone.style.margin = '0';
+            clone.style.transform = 'none';
+            clone.style.overflow = 'visible';
+            clone.appendChild(svgClone);
+
+            elementToHide = gradientSvg;
+        } else {
+            // REGULAR BLOCKS: Clone the entire wrapper (original behavior)
+            clone = sourceEl.cloneNode(true);
+            clone.classList.add('transition-clone');
+            clone.style.margin = '0';
+            clone.style.transform = 'none';
+            clone.style.display = 'flex';
+            clone.style.alignItems = 'center';
+            clone.style.justifyContent = 'center';
+            clone.style.overflow = 'hidden';
+
+            // Ensure nested SVG/img fills the clone
+            const nestedMedia = clone.querySelectorAll('svg, img');
+            nestedMedia.forEach(el => {
+                el.removeAttribute('width');
+                el.removeAttribute('height');
+                el.style.width = '100%';
+                el.style.height = '100%';
+                el.style.maxWidth = 'none';
+                el.style.maxHeight = 'none';
+                el.style.display = 'block';
+            });
+
+            // Force ALL intermediate wrappers to fill the clone
+            clone.querySelectorAll('*').forEach(el => {
+                el.style.maxWidth = 'none';
+                el.style.maxHeight = 'none';
+            });
+            clone.querySelectorAll(':scope > *, :scope > * > *').forEach(el => {
+                el.style.width = '100%';
+                el.style.height = '100%';
+            });
+
+            sourceRect = sourceEl.getBoundingClientRect();
+            elementToHide = sourceEl;
+        }
+
         overlay.appendChild(clone);
         document.body.appendChild(overlay);
 
-        // EXTRA: If the source is a link/block with multiple things inside, 
-        // we might want to preserve its internal layout.
-        clone.style.display = 'flex';
-        clone.style.alignItems = 'center';
-        clone.style.justifyContent = 'center';
-        clone.style.overflow = 'hidden';
-        clone.style.pointerEvents = 'none'; // Overlay handles clicks
+        // Style the clone for animation
+        clone.style.pointerEvents = 'none';
 
         // 2. Position Clone
-        const startRect = sourceEl.getBoundingClientRect();
-        setCloneStyles(clone, startRect);
+        setCloneStyles(clone, sourceRect);
 
         // 3. Hide Original
-        // We hide the WRAPPER usually, or the SVG. To be safe, hide the SVG directly.
-        sourceEl.style.opacity = '0';
+        elementToHide.style.opacity = '0';
 
         // 4. Animate to Explode
         const viewportW = window.innerWidth;
@@ -139,8 +215,8 @@
         const blockScale = sourceEl.closest('[data-transition-scale-explode]')?.dataset.transitionScaleExplode;
         const scaleFactor = (blockScale && !isNaN(parseFloat(blockScale)) && parseFloat(blockScale) !== 0) ? parseFloat(blockScale) : config.scaleExplode;
 
-        const explodeW = startRect.width * scaleFactor;
-        const explodeH = startRect.height * scaleFactor;
+        const explodeW = sourceRect.width * scaleFactor;
+        const explodeH = sourceRect.height * scaleFactor;
 
         const explodeStyles = {
             width: `${explodeW}px`,
@@ -160,11 +236,14 @@
             const transition = document.startViewTransition(async () => {
                 await loadNewContent(url, transitionId);
 
-                // Find Target in New DOM
+                // Find Target in New DOM and hide the correct element
                 const targetWrapper = document.querySelector(`[data-transition-id="${transitionId}"][data-transition-role="target"]`);
                 if (targetWrapper) {
-                    const targetSvg = targetWrapper.querySelector('svg') || targetWrapper.querySelector('img');
-                    if (targetSvg) targetSvg.style.opacity = '0';
+                    const isTargetIconGrid = !!targetWrapper.querySelector('.icon-grid-gradient');
+                    const targetElement = isTargetIconGrid
+                        ? targetWrapper.querySelector('.icon-grid-gradient')
+                        : targetWrapper;
+                    if (targetElement) targetElement.style.opacity = '0';
                 }
             });
             await transition.ready;
@@ -180,13 +259,118 @@
         const targetWrapper = document.querySelector(`[data-transition-id="${transitionId}"][data-transition-role="target"]`);
 
         if (targetWrapper) {
-            // Find SVG
-            const targetSvg = targetWrapper.querySelector('svg') || targetWrapper.querySelector('img');
+            // Check if target is Icon Grid (same logic as source)
+            const isTargetIconGrid = !!targetWrapper.querySelector('.icon-grid-gradient');
 
-            if (targetSvg) {
-                targetSvg.style.opacity = '0'; // Ensure hidden
+            let measureElement, targetRect;
 
-                const targetRect = targetSvg.getBoundingClientRect();
+            if (isTargetIconGrid) {
+                // ICON GRID TARGET: Apply viewBox-aware measurement (viewBox starts at 0,0)
+                const targetSvg = targetWrapper.querySelector('.icon-grid-gradient');
+                const fullRect = targetSvg.getBoundingClientRect();
+                const bbox = targetSvg.getBBox();
+                const viewBox = targetSvg.viewBox.baseVal;
+
+                targetRect = {
+                    left: fullRect.left + ((bbox.x - viewBox.x) / viewBox.width) * fullRect.width,
+                    top: fullRect.top + ((bbox.y - viewBox.y) / viewBox.height) * fullRect.height,
+                    width: (bbox.width / viewBox.width) * fullRect.width,
+                    height: (bbox.height / viewBox.height) * fullRect.height
+                };
+                measureElement = targetSvg;
+            } else {
+                // REGULAR BLOCKS: Calculate visual rect accounting for preserveAspectRatio
+                measureElement = targetWrapper.querySelector('svg') ||
+                    targetWrapper.querySelector('img') ||
+                    targetWrapper;
+
+                const rect = measureElement.getBoundingClientRect();
+
+                if (measureElement.tagName === 'svg' && measureElement.viewBox?.baseVal?.width) {
+                    const vb = measureElement.viewBox.baseVal;
+                    const svgAspect = vb.width / vb.height;
+                    const rectAspect = rect.width / rect.height;
+
+                    let visualWidth, visualHeight, visualLeft, visualTop;
+
+                    if (svgAspect > rectAspect) {
+                        visualWidth = rect.width;
+                        visualHeight = rect.width / svgAspect;
+                        visualLeft = rect.left;
+                        visualTop = rect.top + (rect.height - visualHeight) / 2;
+                    } else {
+                        visualHeight = rect.height;
+                        visualWidth = rect.height * svgAspect;
+                        visualTop = rect.top;
+                        visualLeft = rect.left + (rect.width - visualWidth) / 2;
+                    }
+
+                    targetRect = {
+                        left: visualLeft,
+                        top: visualTop,
+                        width: visualWidth,
+                        height: visualHeight
+                    };
+                } else {
+                    targetRect = rect;
+                }
+            }
+
+            if (measureElement) {
+                // Hide the WRAPPER (so nothing shows during animation)
+                targetWrapper.style.opacity = '0';
+
+                // For Icon Grid SOURCE: swap clone with a new clone from TARGET
+                // This uses the target's SVG structure which animates correctly
+                if (isIconGridTile && !isTargetIconGrid) {
+                    // Get current explode position from existing clone
+                    const currentLeft = clone.style.left;
+                    const currentTop = clone.style.top;
+                    const currentWidth = clone.style.width;
+                    const currentHeight = clone.style.height;
+
+                    // Remove old clone
+                    clone.remove();
+
+                    // Create new clone from target (like regular blocks)
+                    clone = targetWrapper.cloneNode(true);
+                    clone.classList.add('transition-clone');
+                    clone.style.margin = '0';
+                    clone.style.transform = 'none';
+                    clone.style.display = 'flex';
+                    clone.style.alignItems = 'center';
+                    clone.style.justifyContent = 'center';
+                    clone.style.overflow = 'hidden';
+                    clone.style.opacity = '1'; // Override inherited opacity from hidden wrapper
+
+                    // Ensure nested SVG/img fills the clone
+                    clone.querySelectorAll('svg, img').forEach(el => {
+                        el.removeAttribute('width');
+                        el.removeAttribute('height');
+                        el.style.width = '100%';
+                        el.style.height = '100%';
+                        el.style.maxWidth = 'none';
+                        el.style.maxHeight = 'none';
+                        el.style.display = 'block';
+                    });
+                    clone.querySelectorAll('*').forEach(el => {
+                        el.style.maxWidth = 'none';
+                        el.style.maxHeight = 'none';
+                    });
+                    clone.querySelectorAll(':scope > *, :scope > * > *').forEach(el => {
+                        el.style.width = '100%';
+                        el.style.height = '100%';
+                    });
+
+                    // Position at current explode location
+                    clone.style.position = 'absolute';
+                    clone.style.left = currentLeft;
+                    clone.style.top = currentTop;
+                    clone.style.width = currentWidth;
+                    clone.style.height = currentHeight;
+
+                    overlay.appendChild(clone);
+                }
 
                 // Offsets
                 const offsetX = targetWrapper.dataset.transitionOffsetX ? parseFloat(targetWrapper.dataset.transitionOffsetX) : 0;
@@ -203,7 +387,9 @@
                 const durShrink = (blockDurShrink && !isNaN(parseInt(blockDurShrink)) && parseInt(blockDurShrink) !== 0) ? parseInt(blockDurShrink) : config.durationShrink;
 
                 await animateTo(clone, finalStyles, durShrink, 'cubic-bezier(0.2, 0, 0.2, 1)');
-                targetSvg.style.opacity = '';
+
+                // Show the WRAPPER again
+                targetWrapper.style.opacity = '';
             }
         } else {
             // If no target found, just fade out overlay?
@@ -367,7 +553,26 @@
         }
     }
 
-    // --- Helpers --- (Same as before)
+
+    // --- Helpers ---
+
+    /**
+     * Find the best SVG/image element to animate within a wrapper.
+     * For Icon Grid Unlimited: prefer .icon-grid-gradient (the filled icon)
+     * For other blocks: fall back to first SVG or IMG
+     * 
+     * @param {HTMLElement} wrapper - The wrapper element to search within
+     * @returns {HTMLElement|null}
+     */
+    function findAnimatableSvg(wrapper) {
+        // First, check for Icon Grid Unlimited gradient SVG
+        const gradientSvg = wrapper.querySelector('.icon-grid-gradient');
+        if (gradientSvg) return gradientSvg;
+
+        // Fallback: any SVG or image
+        return wrapper.querySelector('svg') || wrapper.querySelector('img');
+    }
+
     function createOverlay() {
         // Find if the source element has a color override
         const sourceWrapper = document.querySelector(`[data-transition-id="${activeTransitionId}"][data-transition-role="source"]`);
@@ -383,24 +588,42 @@
         return el;
     }
 
-    function cloneLogo(sourceEl) {
-        const clone = sourceEl.cloneNode(true);
+    /**
+     * Clone the logo for animation.
+     * If a gradientSvg is provided (Icon Grid Unlimited), clone just that SVG.
+     * Otherwise, fallback to cloning the entire sourceEl.
+     * 
+     * @param {HTMLElement} sourceEl - The wrapper element with transition attributes
+     * @param {SVGElement|null} gradientSvg - The .icon-grid-gradient SVG (optional)
+     * @returns {{ clone: HTMLElement, rect: DOMRect }}
+     */
+    function cloneLogo(sourceEl, gradientSvg = null) {
+        // Determine what to clone: prefer the gradient SVG if available
+        const elementToClone = gradientSvg || sourceEl.querySelector('svg') || sourceEl.querySelector('img') || sourceEl;
+        const rect = elementToClone.getBoundingClientRect();
+
+        const clone = elementToClone.cloneNode(true);
         clone.classList.add('transition-clone');
         clone.style.margin = '0';
         clone.style.transform = 'none';
+        clone.style.opacity = '1'; // Ensure visible (the original may have opacity:0 initially)
 
-        // Copy computed styles roughly to ensure consistent look
-        const comp = getComputedStyle(sourceEl);
-        clone.style.fill = comp.fill;
+        // If cloning an SVG, ensure it scales properly
+        if (clone.tagName.toLowerCase() === 'svg') {
+            clone.removeAttribute('width');
+            clone.removeAttribute('height');
+            clone.style.width = '100%';
+            clone.style.height = '100%';
+            clone.style.maxWidth = 'none';
+            clone.style.maxHeight = 'none';
+            clone.style.display = 'block';
+        }
 
-        // CRITICAL FIX: Ensure nested SVG/img fills the clone container
-        // SVGs with fixed width/height attributes won't scale properly otherwise
+        // Handle nested SVG/img if we cloned a wrapper
         const nestedMedia = clone.querySelectorAll('svg, img');
         nestedMedia.forEach(el => {
-            // Remove fixed dimension attributes that prevent scaling
             el.removeAttribute('width');
             el.removeAttribute('height');
-            // Force fill container via inline styles
             el.style.width = '100%';
             el.style.height = '100%';
             el.style.maxWidth = 'none';
@@ -408,28 +631,7 @@
             el.style.display = 'block';
         });
 
-        // Also handle if the clone itself is an SVG
-        if (clone.tagName.toLowerCase() === 'svg') {
-            clone.removeAttribute('width');
-            clone.removeAttribute('height');
-        }
-
-        // CRITICAL FIX #2: Force ALL intermediate wrappers to fill the clone
-        // This handles cases like .wp-block-boldblocks-svg-block__inner which may have max-width constraints
-        const allChildren = clone.querySelectorAll('*');
-        allChildren.forEach(el => {
-            el.style.maxWidth = 'none';
-            el.style.maxHeight = 'none';
-        });
-
-        // Force direct children and their children to fill width/height
-        const directAndSecondLevel = clone.querySelectorAll(':scope > *, :scope > * > *');
-        directAndSecondLevel.forEach(el => {
-            el.style.width = '100%';
-            el.style.height = '100%';
-        });
-
-        return clone;
+        return { clone, rect };
     }
 
     function setCloneStyles(clone, rect) {
