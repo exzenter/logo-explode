@@ -25,15 +25,13 @@
         const urlParams = new URLSearchParams(window.location.search);
         activeTransitionId = urlParams.get('transition_id') || (history.state && history.state.transitionId);
 
-        // Check if we just arrived via a transition (History state)
-        // If so, we might need to handle the "landing" animation if we didn't use fetch swap?
-        // In this SPA-like hybrid, we expect to be fully loaded.
-
         setupLinkInterception();
 
         if (history.scrollRestoration) {
             history.scrollRestoration = 'manual';
         }
+
+        window.addEventListener('popstate', handlePopState);
     }
 
     function setupLinkInterception() {
@@ -59,10 +57,6 @@
                 }
             }
         });
-
-        // Handle Back Button?
-        // Standard back button support needs History API handling.
-        window.addEventListener('popstate', handlePopState);
     }
 
     function handleSourceClick(e, wrapper, url) {
@@ -85,27 +79,10 @@
     }
 
     function handlePopState(e) {
-        // If we are going back, check internal state
-        if (e.state && e.state.transitionId) {
-            isBackNavigation = true;
-            activeTransitionId = e.state.transitionId;
-
-            // Current page is the "Target" page (Hero). We need to shrink back to "Source".
-            // Actually, 'shrink' logic assumes we are at Hero and going to Grid.
-            // Yes. 
-
-            // Wait, 'popstate' fires when we ARE at the new URL. 
-            // So if we went Back -> We are now at Home URL.
-            // But we haven't rendered Home yet? No, browser reloaded or restored BF Cache.
-            // If BF Cache used, page is ready.
-
-            // For this specific 'Vector Overlay' effect to work across full page loads,
-            // we usually need to intercept the creation of the old page?
-            // Simplest MVP: Just reload the page if it's a popstate, 
-            // or rely on the standard "fetch new page" logic if we intercepted clicks.
-            // Standard browser Back button will reload page in MPA. 
-            window.location.reload();
-        }
+        // Since we are using pushState for transitions, the browser won't reload by default on Back/Forward.
+        // We force a reload to ensure the correct page content is displayed and to reset the state.
+        // This is the most robust way to handle the "Vector Overlay" effect limits without building a full router.
+        window.location.reload();
     }
 
     async function performTransition(url, sourceEl, direction, transitionId) {
@@ -150,9 +127,7 @@
                 await loadNewContent(url, transitionId);
 
                 // Find Target in New DOM
-                // Look for [data-transition-id="ID"][data-transition-role="target"]
                 const targetWrapper = document.querySelector(`[data-transition-id="${transitionId}"][data-transition-role="target"]`);
-
                 if (targetWrapper) {
                     const targetSvg = targetWrapper.querySelector('svg') || targetWrapper.querySelector('img');
                     if (targetSvg) targetSvg.style.opacity = '0';
@@ -164,6 +139,9 @@
         }
 
         // 6. Animate Clone to Target
+        // Wait for the double-scroll reset and layout to fully settle
+        await wait(200);
+        await requestFrame();
         // Only works if we successfully loaded the new DOM and found the target
         const targetWrapper = document.querySelector(`[data-transition-id="${transitionId}"][data-transition-role="target"]`);
 
@@ -195,28 +173,153 @@
     }
 
     async function loadNewContent(url, transitionId) {
-        const response = await fetch(url);
-        const text = await response.text();
-        const parser = new DOMParser();
-        const newDoc = parser.parseFromString(text, 'text/html');
+        try {
+            const response = await fetch(url);
+            const text = await response.text();
+            const parser = new DOMParser();
+            const newDoc = parser.parseFromString(text, 'text/html');
 
-        // Update History
-        history.pushState({ transitionId: transitionId }, '', url);
+            // Force scroll to top IMMEDIATELY before swap
+            window.scrollTo(0, 0);
+            document.documentElement.scrollTop = 0;
+            document.body.scrollTop = 0;
 
-        document.title = newDoc.title;
-        document.body.className = newDoc.body.className;
+            // Update History
+            history.pushState({ transitionId: transitionId }, '', url);
 
-        // Preserve Overlay
-        const overlay = document.querySelector('.transition-overlay');
-        if (overlay) document.body.removeChild(overlay);
+            document.title = newDoc.title;
+            // Update <html> class as well, as some plugins/themes use it for scoping
+            document.documentElement.className = newDoc.documentElement.className;
+            document.body.className = newDoc.body.className;
 
-        document.body.innerHTML = newDoc.body.innerHTML;
+            // --- 1. Swap/Update Stylesheets (HEAD) ---
+            const newHead = newDoc.head;
+            const newLinks = Array.from(newHead.querySelectorAll('link[rel="stylesheet"], style'));
+            const currentHead = document.head;
 
-        // Restore Overlay
-        if (overlay) document.body.appendChild(overlay);
+            newLinks.forEach(newLink => {
+                if (newLink.tagName === 'LINK') {
+                    if (!currentHead.querySelector(`link[href="${newLink.href}"]`)) {
+                        const clone = newLink.cloneNode(true);
+                        currentHead.appendChild(clone);
+                    }
+                } else if (newLink.tagName === 'STYLE') {
+                    if (newLink.id) {
+                        const existing = currentHead.querySelector(`#${newLink.id}`);
+                        const clone = newLink.cloneNode(true);
+                        if (existing) {
+                            existing.replaceWith(clone);
+                        } else {
+                            currentHead.appendChild(clone);
+                        }
+                    } else {
+                        currentHead.appendChild(newLink.cloneNode(true));
+                    }
+                }
+            });
 
-        window.scrollTo(0, 0);
-        setupLinkInterception(); // Re-bind
+            // --- 1b. Sync Head Scripts ---
+            const newHeadScripts = newDoc.head.querySelectorAll('script');
+            newHeadScripts.forEach(oldScript => {
+                const src = oldScript.getAttribute('src');
+                if (src) {
+                    // If it's a script that doesn't exist in current doc, load it
+                    if (!document.querySelector(`script[src="${src}"]`)) {
+                        const newScript = document.createElement('script');
+                        Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
+                        document.head.appendChild(newScript);
+                    }
+                }
+            });
+
+            // --- 2. Update Body Content ---
+            // Preserve Overlay
+            const overlay = document.querySelector('.transition-overlay');
+            if (overlay) document.body.removeChild(overlay);
+
+            document.body.innerHTML = newDoc.body.innerHTML;
+
+            // Restore Overlay
+            if (overlay) document.body.appendChild(overlay);
+
+            // --- 3. Execute Scripts from New Body ---
+            const newScripts = document.body.querySelectorAll('script');
+            // Debug: Log all scripts found in the new body
+            console.log('[Transition] Found', newScripts.length, 'scripts in new body.');
+
+            newScripts.forEach(oldScript => {
+                const newScript = document.createElement('script');
+
+                // Copy attributes
+                let isFluidScript = false;
+                Array.from(oldScript.attributes).forEach(attr => {
+                    newScript.setAttribute(attr.name, attr.value);
+                    if (attr.name === 'src' && (attr.value.includes('gradient-fluid-block') || attr.value.includes('fluid-group'))) {
+                        isFluidScript = true;
+                        console.log('[Transition] Found Fluid Block script:', attr.value);
+                    }
+                });
+                console.log('[Transition] Processing script:', oldScript.src || '(inline)');
+
+                // Copy content
+                if (oldScript.textContent) {
+                    newScript.textContent = oldScript.textContent;
+                }
+
+                // Hook for Fluid Block
+                if (isFluidScript) {
+                    newScript.onload = () => {
+                        console.log('[Transition] Fluid Block script loaded. Initializing...');
+                        if (typeof window.initFluidGroupBlocks === 'function') {
+                            window.initFluidGroupBlocks();
+                        } else {
+                            console.error('[Transition] Script loaded but initFluidGroupBlocks is undefined.');
+                        }
+                    };
+                }
+
+                oldScript.parentNode.replaceChild(newScript, oldScript);
+            });
+
+            // Force scroll again (wrapped in timeout to beat browser restoration)
+            const forceScroll = () => {
+                window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+                document.body.scrollTop = 0;
+                document.documentElement.scrollTop = 0;
+            };
+            forceScroll();
+            setTimeout(forceScroll, 50);
+            setTimeout(forceScroll, 150);
+
+            setupLinkInterception(); // Re-bind our links
+
+            // Trigger events to help plugins re-initialize
+            // Fallback: Check if it's already available (e.g. cached)
+            setTimeout(() => {
+                if (typeof window.initFluidGroupBlocks === 'function') {
+                    console.log('[Transition] Fallback: calling initFluidGroupBlocks (in case onload missed or already loaded).');
+                    window.initFluidGroupBlocks();
+                }
+            }, 100);
+
+            window.dispatchEvent(new Event('resize'));
+            document.dispatchEvent(new Event('DOMContentLoaded', { bubbles: true }));
+            window.dispatchEvent(new Event('load'));
+
+            // jQuery Compatibility
+            if (window.jQuery) {
+                window.jQuery(document).trigger('ready');
+            }
+
+            // WordPress DOM Ready Compatibility
+            if (window.wp && window.wp.domReady) {
+                window.wp.domReady(() => { });
+            }
+
+        } catch (err) {
+            console.error('Transition Failed:', err);
+            window.location.href = url; // Fallback
+        }
     }
 
     // --- Helpers --- (Same as before)
@@ -267,6 +370,14 @@
                 resolve();
             };
         });
+    }
+
+    function wait(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function requestFrame() {
+        return new Promise(resolve => requestAnimationFrame(resolve));
     }
 
 })();

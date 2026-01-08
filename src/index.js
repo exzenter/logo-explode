@@ -11,7 +11,9 @@ const { PanelBody, TextControl, SelectControl } = wp.components;
 const { addFilter } = wp.hooks;
 
 // Restrict to specific blocks if desired, or allow all with 'core/image' etc.
-const ALLOWED_BLOCKS = ['core/image', 'gutenberg-bem/svg-block', 'core/group'];
+// Allowed blocks restriction removed to support all blocks (including SVG block)
+// const ALLOWED_BLOCKS = ['core/image', 'gutenberg-bem/svg-block', 'core/group'];
+
 
 /**
  * Add attributes to Block registration (Client side)
@@ -20,9 +22,10 @@ const ALLOWED_BLOCKS = ['core/image', 'gutenberg-bem/svg-block', 'core/group'];
 function addAttributes(settings, name) {
     // Optionally check if name is in ALLOWED_BLOCKS
     // For now, let's enable it broadly for flexibility or specific blocks
-    if (!ALLOWED_BLOCKS.includes(name)) {
-        return settings;
-    }
+    // Restriction removed
+    // if (!ALLOWED_BLOCKS.includes(name)) {
+    //    return settings;
+    // }
 
     if (typeof settings.attributes !== 'undefined') {
         settings.attributes = Object.assign(settings.attributes, {
@@ -51,9 +54,10 @@ const withInspectorControls = createHigherOrderComponent((BlockEdit) => {
     return (props) => {
         const { name, attributes, setAttributes } = props;
 
-        if (!ALLOWED_BLOCKS.includes(name)) {
-            return <BlockEdit {...props} />;
-        }
+        // Restriction removed
+        // if (!ALLOWED_BLOCKS.includes(name)) {
+        //    return <BlockEdit {...props} />;
+        // }
 
         const { transitionId, transitionRole, transitionLink } = attributes;
 
@@ -99,9 +103,10 @@ addFilter('editor.BlockEdit', 'wp-logo-explode/with-inspector-controls', withIns
  * Note: getSaveContent.extraProps applies to the FRONTEND save output.
  */
 function addSaveProps(extraProps, blockType, attributes) {
-    if (!ALLOWED_BLOCKS.includes(blockType.name)) {
-        return extraProps;
-    }
+    // Restriction removed
+    // if (!ALLOWED_BLOCKS.includes(blockType.name)) {
+    //    return extraProps;
+    // }
 
     const { transitionId, transitionRole, transitionLink } = attributes;
 
