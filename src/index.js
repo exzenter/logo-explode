@@ -7,7 +7,7 @@ const { __ } = wp.i18n;
 const { createHigherOrderComponent } = wp.compose;
 const { Fragment } = wp.element;
 const { InspectorControls } = wp.blockEditor;
-const { PanelBody, TextControl, SelectControl } = wp.components;
+const { PanelBody, TextControl, SelectControl, ColorPalette, RangeControl } = wp.components;
 const { addFilter } = wp.hooks;
 
 // Restrict to specific blocks if desired, or allow all with 'core/image' etc.
@@ -41,6 +41,30 @@ function addAttributes(settings, name) {
                 type: 'string',
                 default: '',
             },
+            transitionColor: {
+                type: 'string',
+                default: '',
+            },
+            offsetX: {
+                type: 'number',
+                default: 0,
+            },
+            offsetY: {
+                type: 'number',
+                default: 0,
+            },
+            durationExpand: {
+                type: 'number',
+                default: 0,
+            },
+            durationShrink: {
+                type: 'number',
+                default: 0,
+            },
+            scaleExplode: {
+                type: 'number',
+                default: 0,
+            },
         });
     }
     return settings;
@@ -59,7 +83,7 @@ const withInspectorControls = createHigherOrderComponent((BlockEdit) => {
         //    return <BlockEdit {...props} />;
         // }
 
-        const { transitionId, transitionRole, transitionLink } = attributes;
+        const { transitionId, transitionRole, transitionLink, transitionColor, offsetX, offsetY, durationExpand, durationShrink, scaleExplode } = attributes;
 
         return (
             <Fragment>
@@ -90,6 +114,62 @@ const withInspectorControls = createHigherOrderComponent((BlockEdit) => {
                                 onChange={(value) => setAttributes({ transitionLink: value })}
                             />
                         )}
+
+                        <Fragment>
+                            <p style={{ marginTop: '10px', marginBottom: '5px' }}>{__('Transition Color', 'wp-logo-explode')}</p>
+                            <ColorPalette
+                                value={transitionColor}
+                                onChange={(value) => setAttributes({ transitionColor: value })}
+                            />
+
+                            <RangeControl
+                                label={__('Expansion Duration (ms)', 'wp-logo-explode')}
+                                value={durationExpand || 0}
+                                onChange={(value) => setAttributes({ durationExpand: value })}
+                                min={0}
+                                max={3000}
+                                help={__('0 = Use Global Default', 'wp-logo-explode')}
+                            />
+
+                            <RangeControl
+                                label={__('Shrink Duration (ms)', 'wp-logo-explode')}
+                                value={durationShrink || 0}
+                                onChange={(value) => setAttributes({ durationShrink: value })}
+                                min={0}
+                                max={3000}
+                                help={__('0 = Use Global Default', 'wp-logo-explode')}
+                            />
+
+                            <RangeControl
+                                label={__('Explosion Scale', 'wp-logo-explode')}
+                                value={scaleExplode || 0}
+                                onChange={(value) => setAttributes({ scaleExplode: value })}
+                                min={0}
+                                max={200}
+                                help={__('0 = Use Global Default', 'wp-logo-explode')}
+                            />
+
+                            {transitionRole === 'target' && (
+                                <Fragment>
+                                    <hr />
+                                    <p style={{ fontWeight: 'bold' }}>{__('Position Offsets', 'wp-logo-explode')}</p>
+                                    <RangeControl
+                                        label={__('X Offset (px)', 'wp-logo-explode')}
+                                        value={offsetX}
+                                        onChange={(value) => setAttributes({ offsetX: value })}
+                                        min={-500}
+                                        max={500}
+                                    />
+                                    <RangeControl
+                                        label={__('Y Offset (px)', 'wp-logo-explode')}
+                                        value={offsetY}
+                                        onChange={(value) => setAttributes({ offsetY: value })}
+                                        min={-500}
+                                        max={500}
+                                    />
+                                </Fragment>
+                            )}
+                        </Fragment>
                     </PanelBody>
                 </InspectorControls>
             </Fragment>
@@ -108,7 +188,7 @@ function addSaveProps(extraProps, blockType, attributes) {
     //    return extraProps;
     // }
 
-    const { transitionId, transitionRole, transitionLink } = attributes;
+    const { transitionId, transitionRole, transitionLink, transitionColor, offsetX, offsetY, durationExpand, durationShrink, scaleExplode } = attributes;
 
     if (transitionId && transitionRole) {
         extraProps['data-transition-id'] = transitionId;
@@ -116,6 +196,16 @@ function addSaveProps(extraProps, blockType, attributes) {
 
         if (transitionRole === 'source' && transitionLink) {
             extraProps['data-transition-link'] = transitionLink;
+        }
+
+        if (transitionColor) extraProps['data-transition-color'] = transitionColor;
+        if (durationExpand) extraProps['data-transition-duration-expand'] = durationExpand;
+        if (durationShrink) extraProps['data-transition-duration-shrink'] = durationShrink;
+        if (scaleExplode) extraProps['data-transition-scale-explode'] = scaleExplode;
+
+        if (transitionRole === 'target') {
+            if (offsetX) extraProps['data-transition-offset-x'] = offsetX;
+            if (offsetY) extraProps['data-transition-offset-y'] = offsetY;
         }
     }
 

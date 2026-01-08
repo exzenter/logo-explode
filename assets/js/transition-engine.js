@@ -13,10 +13,27 @@
     let activeTransitionId = null;
     let isBackNavigation = false;
 
-    // Animation Config
-    const DURATION_EXPAND = 800;
-    const DURATION_SHRINK = 800;
-    const SCALE_EXPLODE = 100;
+    // Default Config (fallback if wpLogoExplodeSettings is missing)
+    const defaults = {
+        durationExpand: 800,
+        durationShrink: 800,
+        scaleExplode: 100,
+        layoutSettleDelay: 200,
+        zIndex: 99999,
+        forceScrollTop: true,
+        globalBgColor: ''
+    };
+
+    const rawSettings = window.wpLogoExplodeSettings || {};
+    const config = {
+        durationExpand: parseInt(rawSettings.durationExpand) || defaults.durationExpand,
+        durationShrink: parseInt(rawSettings.durationShrink) || defaults.durationShrink,
+        scaleExplode: parseFloat(rawSettings.scaleExplode) || defaults.scaleExplode,
+        layoutSettleDelay: parseInt(rawSettings.layoutSettleDelay) || defaults.layoutSettleDelay,
+        zIndex: parseInt(rawSettings.zIndex) || defaults.zIndex,
+        forceScrollTop: rawSettings.forceScrollTop !== undefined ? (rawSettings.forceScrollTop === '1' || rawSettings.forceScrollTop === true) : defaults.forceScrollTop,
+        globalBgColor: rawSettings.globalBgColor || defaults.globalBgColor
+    };
 
     document.addEventListener('DOMContentLoaded', init);
 
@@ -61,8 +78,10 @@
 
     function handleSourceClick(e, wrapper, url) {
         if (e.ctrlKey || e.metaKey || e.shiftKey) return;
-        // prevent default if it was a link
+
+        // Stop Icon Grid or other plugin JS from stealing the click and navigating/animating
         e.preventDefault();
+        e.stopPropagation();
 
         const transitionId = wrapper.dataset.transitionId;
         if (!transitionId) {
@@ -73,9 +92,9 @@
         activeTransitionId = transitionId;
         isBackNavigation = false;
 
-        // Find the SVG inside the wrapper
-        const svg = wrapper.querySelector('svg') || wrapper.querySelector('img');
-        performTransition(url, svg, 'expand', transitionId);
+        // NEW: Prefer the wrapper itself as the source if it's a "block" source
+        // This ensures backgrounds and labels come along for the ride.
+        performTransition(url, wrapper, 'expand', transitionId);
     }
 
     function handlePopState(e) {
@@ -97,6 +116,14 @@
         overlay.appendChild(clone);
         document.body.appendChild(overlay);
 
+        // EXTRA: If the source is a link/block with multiple things inside, 
+        // we might want to preserve its internal layout.
+        clone.style.display = 'flex';
+        clone.style.alignItems = 'center';
+        clone.style.justifyContent = 'center';
+        clone.style.overflow = 'hidden';
+        clone.style.pointerEvents = 'none'; // Overlay handles clicks
+
         // 2. Position Clone
         const startRect = sourceEl.getBoundingClientRect();
         setCloneStyles(clone, startRect);
@@ -108,8 +135,12 @@
         // 4. Animate to Explode
         const viewportW = window.innerWidth;
         const viewportH = window.innerHeight;
-        const explodeW = startRect.width * SCALE_EXPLODE;
-        const explodeH = startRect.height * SCALE_EXPLODE;
+
+        const blockScale = sourceEl.closest('[data-transition-scale-explode]')?.dataset.transitionScaleExplode;
+        const scaleFactor = (blockScale && !isNaN(parseFloat(blockScale)) && parseFloat(blockScale) !== 0) ? parseFloat(blockScale) : config.scaleExplode;
+
+        const explodeW = startRect.width * scaleFactor;
+        const explodeH = startRect.height * scaleFactor;
 
         const explodeStyles = {
             width: `${explodeW}px`,
@@ -118,7 +149,10 @@
             top: `${viewportH / 2 - explodeH / 2}px`
         };
 
-        await animateTo(clone, explodeStyles, DURATION_EXPAND, 'cubic-bezier(0.2, 0.9, 0.2, 1)');
+        const blockDurExpand = sourceEl.closest('[data-transition-duration-expand]')?.dataset.transitionDurationExpand;
+        const durExpand = (blockDurExpand && !isNaN(parseInt(blockDurExpand)) && parseInt(blockDurExpand) !== 0) ? parseInt(blockDurExpand) : config.durationExpand;
+
+        await animateTo(clone, explodeStyles, durExpand, 'cubic-bezier(0.2, 0.9, 0.2, 1)');
 
         // 5. Fetch New Page
         // Use View Transition API for content if available, else manual
@@ -140,7 +174,7 @@
 
         // 6. Animate Clone to Target
         // Wait for the double-scroll reset and layout to fully settle
-        await wait(200);
+        await wait(config.layoutSettleDelay);
         await requestFrame();
         // Only works if we successfully loaded the new DOM and found the target
         const targetWrapper = document.querySelector(`[data-transition-id="${transitionId}"][data-transition-role="target"]`);
@@ -153,14 +187,22 @@
                 targetSvg.style.opacity = '0'; // Ensure hidden
 
                 const targetRect = targetSvg.getBoundingClientRect();
+
+                // Offsets
+                const offsetX = targetWrapper.dataset.transitionOffsetX ? parseFloat(targetWrapper.dataset.transitionOffsetX) : 0;
+                const offsetY = targetWrapper.dataset.transitionOffsetY ? parseFloat(targetWrapper.dataset.transitionOffsetY) : 0;
+
                 const finalStyles = {
                     width: `${targetRect.width}px`,
                     height: `${targetRect.height}px`,
-                    left: `${targetRect.left}px`,
-                    top: `${targetRect.top}px`
+                    left: `${targetRect.left + offsetX}px`,
+                    top: `${targetRect.top + offsetY}px`
                 };
 
-                await animateTo(clone, finalStyles, DURATION_SHRINK, 'cubic-bezier(0.2, 0, 0.2, 1)');
+                const blockDurShrink = sourceEl.closest('[data-transition-duration-shrink]')?.dataset.transitionDurationShrink;
+                const durShrink = (blockDurShrink && !isNaN(parseInt(blockDurShrink)) && parseInt(blockDurShrink) !== 0) ? parseInt(blockDurShrink) : config.durationShrink;
+
+                await animateTo(clone, finalStyles, durShrink, 'cubic-bezier(0.2, 0, 0.2, 1)');
                 targetSvg.style.opacity = '';
             }
         } else {
@@ -180,9 +222,11 @@
             const newDoc = parser.parseFromString(text, 'text/html');
 
             // Force scroll to top IMMEDIATELY before swap
-            window.scrollTo(0, 0);
-            document.documentElement.scrollTop = 0;
-            document.body.scrollTop = 0;
+            if (config.forceScrollTop) {
+                window.scrollTo(0, 0);
+                document.documentElement.scrollTop = 0;
+                document.body.scrollTop = 0;
+            }
 
             // Update History
             history.pushState({ transitionId: transitionId }, '', url);
@@ -283,6 +327,7 @@
 
             // Force scroll again (wrapped in timeout to beat browser restoration)
             const forceScroll = () => {
+                if (!config.forceScrollTop) return;
                 window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
                 document.body.scrollTop = 0;
                 document.documentElement.scrollTop = 0;
@@ -324,8 +369,17 @@
 
     // --- Helpers --- (Same as before)
     function createOverlay() {
+        // Find if the source element has a color override
+        const sourceWrapper = document.querySelector(`[data-transition-id="${activeTransitionId}"][data-transition-role="source"]`);
+        const bgColor = sourceWrapper?.dataset.transitionColor || config.globalBgColor;
+
         const el = document.createElement('div');
         el.className = 'transition-overlay';
+        el.style.zIndex = config.zIndex;
+        if (bgColor) {
+            el.style.backgroundColor = bgColor;
+            el.style.pointerEvents = 'auto'; // Block clicks if we have a background? Or not. User choice.
+        }
         return el;
     }
 
@@ -351,6 +405,9 @@
     }
 
     function animateTo(element, styles, duration, easing) {
+        // Final safety check for duration
+        const safeDuration = (isNaN(duration) || duration < 0) ? 0 : duration;
+
         return new Promise(resolve => {
             const animation = element.animate([
                 {
@@ -361,7 +418,7 @@
                 },
                 styles
             ], {
-                duration: duration,
+                duration: safeDuration,
                 easing: easing,
                 fill: 'forwards'
             });

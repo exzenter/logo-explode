@@ -37,6 +37,36 @@ class WP_Logo_Explode_Blocks_Integration {
 			'default' => '',
 		);
 
+		$args['attributes']['transitionColor'] = array(
+			'type'    => 'string',
+			'default' => '',
+		);
+
+		$args['attributes']['offsetX'] = array(
+			'type'    => 'number',
+			'default' => 0,
+		);
+
+		$args['attributes']['offsetY'] = array(
+			'type'    => 'number',
+			'default' => 0,
+		);
+
+		$args['attributes']['durationExpand'] = array(
+			'type'    => 'number',
+			'default' => 0, // 0 means use global default
+		);
+
+		$args['attributes']['durationShrink'] = array(
+			'type'    => 'number',
+			'default' => 0, // 0 means use global default
+		);
+
+		$args['attributes']['scaleExplode'] = array(
+			'type'    => 'number',
+			'default' => 0, // 0 means use global default
+		);
+
 		return $args;
 	}
 }
