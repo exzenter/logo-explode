@@ -20,8 +20,25 @@
     pointer-events: none;
 }
 
-/* Ensure data-attributed elements have position context if needed? 
-   No, we target inner SVG. But let's be safe. */
-[data-transition-role="source"] {
-    /* Optional visual cue */
+/* Ensure nested SVG/IMG fills the clone container */
+.transition-clone svg,
+.transition-clone img {
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    display: block;
+}
+
+/* Force ALL intermediate containers to fill the clone */
+.transition-clone * {
+    max-width: none !important;
+    max-height: none !important;
+}
+
+/* Specifically target wrapper divs inside the clone */
+.transition-clone>*,
+.transition-clone>*>* {
+    width: 100% !important;
+    height: 100% !important;
 }

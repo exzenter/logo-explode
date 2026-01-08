@@ -393,6 +393,42 @@
         const comp = getComputedStyle(sourceEl);
         clone.style.fill = comp.fill;
 
+        // CRITICAL FIX: Ensure nested SVG/img fills the clone container
+        // SVGs with fixed width/height attributes won't scale properly otherwise
+        const nestedMedia = clone.querySelectorAll('svg, img');
+        nestedMedia.forEach(el => {
+            // Remove fixed dimension attributes that prevent scaling
+            el.removeAttribute('width');
+            el.removeAttribute('height');
+            // Force fill container via inline styles
+            el.style.width = '100%';
+            el.style.height = '100%';
+            el.style.maxWidth = 'none';
+            el.style.maxHeight = 'none';
+            el.style.display = 'block';
+        });
+
+        // Also handle if the clone itself is an SVG
+        if (clone.tagName.toLowerCase() === 'svg') {
+            clone.removeAttribute('width');
+            clone.removeAttribute('height');
+        }
+
+        // CRITICAL FIX #2: Force ALL intermediate wrappers to fill the clone
+        // This handles cases like .wp-block-boldblocks-svg-block__inner which may have max-width constraints
+        const allChildren = clone.querySelectorAll('*');
+        allChildren.forEach(el => {
+            el.style.maxWidth = 'none';
+            el.style.maxHeight = 'none';
+        });
+
+        // Force direct children and their children to fill width/height
+        const directAndSecondLevel = clone.querySelectorAll(':scope > *, :scope > * > *');
+        directAndSecondLevel.forEach(el => {
+            el.style.width = '100%';
+            el.style.height = '100%';
+        });
+
         return clone;
     }
 
