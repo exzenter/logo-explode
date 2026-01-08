@@ -1,0 +1,27 @@
+/* WP Logo Explode Styles */
+
+.transition-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 99999 !important;
+    /* Extremely high for WP admin bar etc */
+    pointer-events: none;
+    contain: layout style;
+}
+
+.transition-clone {
+    position: absolute;
+    transform-origin: top left;
+    will-change: transform, width, height;
+    shape-rendering: geometricPrecision;
+    pointer-events: none;
+}
+
+/* Ensure data-attributed elements have position context if needed? 
+   No, we target inner SVG. But let's be safe. */
+[data-transition-role="source"] {
+    /* Optional visual cue */
+}
