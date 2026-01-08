@@ -76,7 +76,7 @@
         });
     }
 
-    function handleSourceClick(e, wrapper, url) {
+    async function handleSourceClick(e, wrapper, url) {
         if (e.ctrlKey || e.metaKey || e.shiftKey) return;
 
         // Stop Icon Grid or other plugin JS from stealing the click and navigating/animating
@@ -89,11 +89,38 @@
             return;
         }
 
+        // MOBILE UX FIX: If this is an Icon Grid tile and we are on mobile, 
+        // we might need to manually trigger the "active" state (scale up) 
+        // before starting the transition.
+        const isIconGridTile = !!wrapper.querySelector('.icon-grid-gradient');
+        const isMobile = window.innerWidth <= 1024;
+
+        if (isIconGridTile && isMobile) {
+            const isAlreadyActive = wrapper.classList.contains('is-active');
+
+            if (!isAlreadyActive) {
+                // 1. Manually add active class to this tile
+                wrapper.classList.add('is-active');
+
+                // 2. Remove active class from siblings in the same grid
+                const parentGrid = wrapper.closest('.wp-block-exzenter-icon-grid-unlimited');
+                if (parentGrid) {
+                    parentGrid.querySelectorAll('.icon-grid-cell-wrapper.is-active').forEach(sibling => {
+                        if (sibling !== wrapper) sibling.classList.remove('is-active');
+                    });
+                }
+
+                // 3. Wait for the CSS transition (scale up) to complete
+                // Usually takes ~250-300ms, let's wait 300ms for safety
+                await wait(300);
+            }
+        }
+
         activeTransitionId = transitionId;
         isBackNavigation = false;
 
-        // NEW: Prefer the wrapper itself as the source if it's a "block" source
-        // This ensures backgrounds and labels come along for the ride.
+        // Perform transition using the wrapper
+        // Since we waited (if needed), the dimensions will reflect the active/scaled-up state
         performTransition(url, wrapper, 'expand', transitionId);
     }
 
