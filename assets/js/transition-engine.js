@@ -538,13 +538,32 @@
                 oldScript.parentNode.replaceChild(newScript, oldScript);
             });
 
-            // Force scroll again (wrapped in timeout to beat browser restoration)
+            // Handling Scrolling & Anchors
+            const destinationUrl = new URL(url, window.location.origin);
+            const hash = destinationUrl.hash;
+
             const forceScroll = () => {
+                if (hash) {
+                    const targetEl = document.querySelector(hash);
+                    if (targetEl) {
+                        // Scroll to the element with hash
+                        targetEl.scrollIntoView({ behavior: 'instant', block: 'start' });
+
+                        // Fix for WordPress Admin Bar if it exists
+                        const adminBar = document.getElementById('wpadminbar');
+                        if (adminBar) {
+                            window.scrollBy(0, -adminBar.offsetHeight);
+                        }
+                        return;
+                    }
+                }
+
                 if (!config.forceScrollTop) return;
                 window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
                 document.body.scrollTop = 0;
                 document.documentElement.scrollTop = 0;
             };
+
             forceScroll();
             setTimeout(forceScroll, 50);
             setTimeout(forceScroll, 150);
