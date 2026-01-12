@@ -39,40 +39,56 @@ This plugin uses Node.js and `@wordpress/scripts` for building assets.
 
 ## Integration with Canvas Animations (Prompt for AI Agents)
 
-If you are generating code with LLMs (like ChatGPT or Claude) for canvas animations on pages using this plugin, use the following prompt to ensure they coordinate correctly with the page transition.
+If you are generating code with LLMs (like ChatGPT or Claude) for canvas animations on pages using this plugin, use the following **exact prompt** to ensure they coordinate correctly with the page transition.
 
-### The Mechanism
-Target page animations normally start on `DOMContentLoaded`. However, when navigating via **WP Logo Explode**, the new page content is loaded and the `load` event fires **before** the "shrink" transition completes.
+### The Problem
+When navigating via **WP Logo Explode**, the new page content is loaded and the `load` event fires **before** the "shrink" transition completes. Standard `DOMContentLoaded` scripts will start too early, interfering with the transition or having their canvas setup invalid.
 
-To fix this, the target page script must wait for the transition to finish. The plugin supports a specific global hook: `window.initializeOnPageCanvasAfterTransition`.
+### The Solution
+The target page script must wait for the transition to finish. The plugin supports a global hook: `window.initializeOnPageCanvasAfterTransition`.
+
+**Robustness:** The transition engine **polls** for this function for up to 2 seconds after the transition completes. This means even if your script loads slightly later than the transition (e.g., due to network delays), the hook will still fire correctly.
 
 ### Copy-Paste Prompt for AI
 Give this instruction to the AI writing your canvas code:
 
 > **Integration Request:**
-> Please refactor the initialization logic of the canvas animation.
-> Instead of immediately starting the animation on `window.onload` or `DOMContentLoaded`, please implement the following "Hybrid Start" logic:
+> Please refactor the initialization logic of the canvas animation to support the "WP Logo Explode" transition engine.
 >
-> 1.  **Encapsulate**: Wrap your main start/loop function in a named function (e.g., `startAnimation`).
-> 2.  **Expose Hook**: Assign this function to `window.initializeOnPageCanvasAfterTransition = startAnimation;`.
-> 3.  **Conditional Start**: In your standard load event listener, check if a transition is currently active.
+> **CRITICAL REQUIREMENT:**
+> You must expose your initialization function to the global `window` scope so the transition engine can trigger it at the exact right moment.
 >
-> **Code Pattern:**
+> Please allow the code to run in two modes:
+> 1.  **Transition Mode:** The transition engine calls `window.initializeOnPageCanvasAfterTransition()`.
+> 2.  **Standard Mode:** The code runs on `window.onload` (only if no transition is active).
+>
+> **REQUIRED CODE STRUCTURE:**
+> Please structure your code exactly like this:
+>
 > ```javascript
-> function startAnimation() {
->     // ... your canvas init code ...
-> }
+> (function() {
+>     // 1. Define your init function
+>     function startMyCanvasAnimation() {
+>         // Prevent double-init
+>         if (window.hasMyCanvasAnimationStarted) return;
+>         window.hasMyCanvasAnimationStarted = true;
 >
-> // 1. Expose for WP Logo Explode
-> window.initializeOnPageCanvasAfterTransition = startAnimation;
+>         console.log('Starting Canvas Animation...');
+>         // ... [YOUR CANVAS SETUP CODE HERE] ...
+>     }
 >
-> // 2. Handle Normal Page Loads
-> window.addEventListener('load', () => {
->   // Only start if NOT currently in a transition (overlay present)
->   if (!document.querySelector('.transition-overlay')) {
->       startAnimation();
->   }
-> });
+>     // 2. EXPOSE GLOBALLY (Crucial!)
+>     window.initializeOnPageCanvasAfterTransition = startMyCanvasAnimation;
+>
+>     // 3. Handle Normal Page Loads (Fallback)
+>     window.addEventListener('load', () => {
+>         // If NO transition overlay is present, start immediately.
+>         // If an overlay IS present, do nothing; the engine will call the hook above.
+>         if (!document.querySelector('.transition-overlay')) {
+>             startMyCanvasAnimation();
+>         }
+>     });
+> })();
 > ```
 
 ## Structure

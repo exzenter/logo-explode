@@ -419,13 +419,13 @@
                 targetWrapper.style.opacity = '';
 
                 // SIGNAL TRANSITION COMPLETE
+                console.log('[WP Logo Explode] Transition complete. Dispatching event and polling for hooks.');
+
                 // 1. Dispatch custom event
                 window.dispatchEvent(new Event('wpLogoExplodeTransitionComplete'));
 
-                // 2. Call global hook if defined (User Request)
-                if (typeof window.initializeOnPageCanvasAfterTransition === 'function') {
-                    window.initializeOnPageCanvasAfterTransition();
-                }
+                // 2. Poll for global hook (supports delayed script loading)
+                pollForHook();
             }
         } else {
             // If no target found, just fade out overlay?
@@ -434,6 +434,28 @@
         }
 
         overlay.remove();
+    }
+
+    /**
+     * Polls for window.initializeOnPageCanvasAfterTransition
+     * Retries for up to 2 seconds to allow scripts to load.
+     */
+    function pollForHook(attempts = 0) {
+        if (typeof window.initializeOnPageCanvasAfterTransition === 'function') {
+            console.log('[WP Logo Explode] Found window.initializeOnPageCanvasAfterTransition. Executing...');
+            window.initializeOnPageCanvasAfterTransition();
+            return;
+        }
+
+        // Max 20 attempts * 100ms = 2 seconds
+        if (attempts < 20) {
+            if (attempts === 0) {
+                console.log('[WP Logo Explode] Hook not found immediately. Polling...');
+            }
+            setTimeout(() => pollForHook(attempts + 1), 100);
+        } else {
+            console.log('[WP Logo Explode] No window.initializeOnPageCanvasAfterTransition hook found after 2 seconds.');
+        }
     }
 
     async function loadNewContent(url, transitionId) {
