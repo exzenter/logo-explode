@@ -417,6 +417,15 @@
 
                 // Show the WRAPPER again
                 targetWrapper.style.opacity = '';
+
+                // SIGNAL TRANSITION COMPLETE
+                // 1. Dispatch custom event
+                window.dispatchEvent(new Event('wpLogoExplodeTransitionComplete'));
+
+                // 2. Call global hook if defined (User Request)
+                if (typeof window.initializeOnPageCanvasAfterTransition === 'function') {
+                    window.initializeOnPageCanvasAfterTransition();
+                }
             }
         } else {
             // If no target found, just fade out overlay?

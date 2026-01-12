@@ -37,6 +37,44 @@ This plugin uses Node.js and `@wordpress/scripts` for building assets.
 - `npm run build` - Builds the code for production.
 - `npm run packages-update` - Updates WordPress packages.
 
+## Integration with Canvas Animations (Prompt for AI Agents)
+
+If you are generating code with LLMs (like ChatGPT or Claude) for canvas animations on pages using this plugin, use the following prompt to ensure they coordinate correctly with the page transition.
+
+### The Mechanism
+Target page animations normally start on `DOMContentLoaded`. However, when navigating via **WP Logo Explode**, the new page content is loaded and the `load` event fires **before** the "shrink" transition completes.
+
+To fix this, the target page script must wait for the transition to finish. The plugin supports a specific global hook: `window.initializeOnPageCanvasAfterTransition`.
+
+### Copy-Paste Prompt for AI
+Give this instruction to the AI writing your canvas code:
+
+> **Integration Request:**
+> Please refactor the initialization logic of the canvas animation.
+> Instead of immediately starting the animation on `window.onload` or `DOMContentLoaded`, please implement the following "Hybrid Start" logic:
+>
+> 1.  **Encapsulate**: Wrap your main start/loop function in a named function (e.g., `startAnimation`).
+> 2.  **Expose Hook**: Assign this function to `window.initializeOnPageCanvasAfterTransition = startAnimation;`.
+> 3.  **Conditional Start**: In your standard load event listener, check if a transition is currently active.
+>
+> **Code Pattern:**
+> ```javascript
+> function startAnimation() {
+>     // ... your canvas init code ...
+> }
+>
+> // 1. Expose for WP Logo Explode
+> window.initializeOnPageCanvasAfterTransition = startAnimation;
+>
+> // 2. Handle Normal Page Loads
+> window.addEventListener('load', () => {
+>   // Only start if NOT currently in a transition (overlay present)
+>   if (!document.querySelector('.transition-overlay')) {
+>       startAnimation();
+>   }
+> });
+> ```
+
 ## Structure
 
 - `src/` - Source files for JavaScript and block assets.
