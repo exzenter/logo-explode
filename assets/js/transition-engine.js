@@ -12,6 +12,11 @@
     // State
     let activeTransitionId = null;
     let isBackNavigation = false;
+    let activeTransitionOverlay = null;
+    let transitionAborted = false;
+
+    // Timeout for failsafe cleanup (if transition hangs)
+    const TRANSITION_TIMEOUT = 2500; // 2.5 seconds max
 
     // Default Config (fallback if wpLogoExplodeSettings is missing)
     const defaults = {
@@ -49,6 +54,37 @@
         }
 
         window.addEventListener('popstate', handlePopState);
+
+        // FIX: Handle tab visibility changes during transition
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
+
+    /**
+     * FIX: Abort transition and cleanup when user switches tabs.
+     * Animations are paused/throttled in background tabs which can cause hangs.
+     */
+    function handleVisibilityChange() {
+        if (document.hidden && activeTransitionOverlay) {
+            console.warn('[WP Logo Explode] Tab became hidden during transition. Aborting...');
+            transitionAborted = true;
+            emergencyCleanup();
+        }
+    }
+
+    /**
+     * FIX: Emergency cleanup function to recover from any stuck state.
+     * Removes overlay and resets all transition state.
+     */
+    function emergencyCleanup() {
+        if (activeTransitionOverlay) {
+            activeTransitionOverlay.remove();
+            activeTransitionOverlay = null;
+        }
+        // Also try to find any orphaned overlays
+        document.querySelectorAll('.transition-overlay').forEach(el => el.remove());
+
+        // Reset state
+        transitionAborted = false;
     }
 
     function setupLinkInterception() {
@@ -137,8 +173,19 @@
             return;
         }
 
+        // FIX: Reset abort flag at start of new transition
+        transitionAborted = false;
+
         // 1. Setup Overlay
         const overlay = createOverlay();
+        activeTransitionOverlay = overlay; // FIX: Track globally for emergency cleanup
+
+        // FIX: Failsafe timeout - if transition hangs for too long, cleanup and navigate
+        const failsafeTimeout = setTimeout(() => {
+            console.error('[WP Logo Explode] Transition timeout! Forcing cleanup and navigation.');
+            emergencyCleanup();
+            window.location.href = url;
+        }, TRANSITION_TIMEOUT);
 
         // Check if this is an Icon Grid tile (has .icon-grid-gradient)
         const isIconGridTile = !!sourceEl.querySelector('.icon-grid-gradient');
@@ -257,6 +304,12 @@
 
         await animateTo(clone, explodeStyles, durExpand, 'cubic-bezier(0.2, 0.9, 0.2, 1)');
 
+        // FIX: Check if transition was aborted (e.g., tab switched)
+        if (transitionAborted) {
+            clearTimeout(failsafeTimeout);
+            return;
+        }
+
         // 5. Fetch New Page
         // Use View Transition API for content if available, else manual
         if (document.startViewTransition) {
@@ -273,7 +326,9 @@
                     if (targetElement) targetElement.style.opacity = '0';
                 }
             });
-            await transition.ready;
+            // FIX: Add timeout for View Transition API in case it hangs
+            const viewTransitionTimeout = new Promise(resolve => setTimeout(resolve, 5000));
+            await Promise.race([transition.ready, viewTransitionTimeout]);
         } else {
             await loadNewContent(url, transitionId);
         }
@@ -428,10 +483,24 @@
                 pollForHook();
             }
         } else {
-            // If no target found, just fade out overlay?
-            console.warn('Target element not found for transition:', transitionId);
-            clone.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300 }).onfinish = () => { };
+            // FIX: If no target found, log detailed error and cleanup properly
+            console.warn('[WP Logo Explode] Target element not found for transition:', transitionId);
+            console.warn('[WP Logo Explode] Expected: [data-transition-id="' + transitionId + '"][data-transition-role="target"]');
+
+            // Fade out clone gracefully
+            await new Promise(resolve => {
+                const fadeAnim = clone.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300 });
+                fadeAnim.onfinish = resolve;
+                // FIX: Timeout fallback in case animation doesn't fire onfinish
+                setTimeout(resolve, 400);
+            });
         }
+
+        // FIX: Clear failsafe timeout on successful completion
+        clearTimeout(failsafeTimeout);
+
+        // FIX: Clear global overlay reference
+        activeTransitionOverlay = null;
 
         overlay.remove();
     }
@@ -625,7 +694,9 @@
             }
 
         } catch (err) {
-            console.error('Transition Failed:', err);
+            console.error('[WP Logo Explode] Transition Failed:', err);
+            // FIX: Cleanup overlay before fallback navigation
+            emergencyCleanup();
             window.location.href = url; // Fallback
         }
     }
@@ -724,6 +795,15 @@
         const safeDuration = (isNaN(duration) || duration < 0) ? 0 : duration;
 
         return new Promise(resolve => {
+            let resolved = false;
+
+            const finish = () => {
+                if (resolved) return;
+                resolved = true;
+                Object.assign(element.style, styles);
+                resolve();
+            };
+
             const animation = element.animate([
                 {
                     width: element.style.width,
@@ -737,10 +817,12 @@
                 easing: easing,
                 fill: 'forwards'
             });
-            animation.onfinish = () => {
-                Object.assign(element.style, styles);
-                resolve();
-            };
+
+            animation.onfinish = finish;
+
+            // FIX: Timeout fallback in case onfinish never fires
+            // (e.g., element removed, tab hidden, browser quirk)
+            setTimeout(finish, safeDuration + 500);
         });
     }
 

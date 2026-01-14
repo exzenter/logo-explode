@@ -91,6 +91,91 @@ Give this instruction to the AI writing your canvas code:
 > })();
 > ```
 
+## Robustness & Error Handling
+
+The transition engine includes multiple safeguards to prevent the logo from getting stuck in the "explode" state:
+
+### Failsafe Mechanisms
+
+| Mechanism | Description |
+|-----------|-------------|
+| **Global Timeout** | If any transition takes longer than 15 seconds, it is automatically aborted and the page navigates normally. |
+| **Tab Visibility Handler** | When the user switches tabs during a transition, it is immediately aborted to prevent animation hangs (browsers throttle animations in background tabs). |
+| **View Transition API Timeout** | The View Transition API is given a maximum of 5 seconds to complete; otherwise, the transition proceeds manually. |
+| **Animation Timeout Fallback** | Every animation has a fallback timeout (duration + 500ms) in case the `onfinish` event never fires. |
+| **Missing Target Recovery** | If the target element is not found on the new page, the clone fades out gracefully and the overlay is cleaned up. |
+| **Fetch Error Recovery** | If fetching the new page fails, the overlay is removed and the browser navigates normally. |
+
+### Emergency Cleanup
+
+The engine exposes an internal `emergencyCleanup()` function that:
+- Removes the active transition overlay
+- Cleans up any orphaned `.transition-overlay` elements
+- Resets all transition state flags
+
+This is automatically called in error scenarios and when the tab becomes hidden.
+
+### Console Logging
+
+All transition events are logged with the `[WP Logo Explode]` prefix for easy debugging:
+- Transition start/complete events
+- Hook polling status
+- Warnings for missing targets
+- Errors with detailed context
+
+---
+
+## Behavior When JavaScript Is Disabled
+
+If JavaScript is disabled in the browser, the plugin behaves as follows:
+
+| Component | Behavior |
+|-----------|----------|
+| **Links with `data-transition-link`** | **Do not work** – there is no native `href` on the wrapper element |
+| **Links with nested `<a>` tags** | **Work normally** – the browser follows the native link |
+| **Transition Overlay & Animation** | **Never appear** – no JavaScript means no overlay |
+| **Navigation** | Depends on HTML structure – only real `<a>` links function |
+
+### Recommended Fallback Pattern
+
+To ensure your links work without JavaScript, use one of these patterns:
+
+**Option 1: Use `<a>` as the wrapper (Progressive Enhancement)**
+```html
+<a href="/target-page" 
+   data-transition-role="source" 
+   data-transition-id="my-logo" 
+   data-transition-link="/target-page">
+    <img src="logo.svg" alt="Logo">
+</a>
+```
+
+**Option 2: Nested link inside the wrapper**
+```html
+<div data-transition-role="source" 
+     data-transition-id="my-logo">
+    <a href="/target-page">
+        <img src="logo.svg" alt="Logo">
+    </a>
+</div>
+```
+> [!NOTE]
+> With Option 2, the transition engine will intercept the nested `<a>` click and perform the animated transition when JS is enabled.
+
+**Option 3: Noscript fallback**
+```html
+<div data-transition-role="source" 
+     data-transition-id="my-logo" 
+     data-transition-link="/target-page">
+    <img src="logo.svg" alt="Logo">
+</div>
+<noscript>
+    <a href="/target-page">Navigate to page</a>
+</noscript>
+```
+
+---
+
 ## Structure
 
 - `src/` - Source files for JavaScript and block assets.
@@ -101,3 +186,4 @@ Give this instruction to the AI writing your canvas code:
 ## License
 
 GPL-2.0-or-later
+
