@@ -42,3 +42,38 @@
     width: 100% !important;
     height: 100% !important;
 }
+
+/* Transition source blocks should have pointer cursor */
+[data-transition-role="source"][data-transition-link] {
+    cursor: pointer;
+    position: relative;
+}
+
+/* Fallback link for no-JS clients */
+.wp-logo-explode-fallback-link {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    text-decoration: none;
+    color: inherit;
+}
+
+/* Hide fallback link when JS is active */
+.js .wp-logo-explode-fallback-link,
+html:not(.no-js) .wp-logo-explode-fallback-link {
+    display: none;
+}
+
+/* Screen reader text (accessibility) */
+.wp-logo-explode-fallback-link .screen-reader-text {
+    border: 0;
+    clip: rect(1px, 1px, 1px, 1px);
+    clip-path: inset(50%);
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    padding: 0;
+    position: absolute;
+    width: 1px;
+    word-wrap: normal !important;
+}

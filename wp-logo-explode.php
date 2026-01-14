@@ -49,6 +49,9 @@ function wp_logo_explode_enqueue_assets() {
 	$settings = array_merge( $defaults, $options );
 
 	wp_localize_script( 'wp-logo-explode-js', 'wpLogoExplodeSettings', $settings );
+
+	// Add inline script to toggle 'js' class for fallback link detection
+	wp_add_inline_script( 'wp-logo-explode-js', "document.documentElement.classList.add('js');document.documentElement.classList.remove('no-js');", 'before' );
 }
 add_action( 'wp_enqueue_scripts', 'wp_logo_explode_enqueue_assets' );
 

@@ -5,28 +5,16 @@
 
 const { __ } = wp.i18n;
 const { createHigherOrderComponent } = wp.compose;
-const { Fragment } = wp.element;
+const { Fragment, useState } = wp.element;
 const { InspectorControls } = wp.blockEditor;
-const { PanelBody, TextControl, SelectControl, ColorPalette, RangeControl } = wp.components;
+const { PanelBody, TextControl, SelectControl, ColorPalette, RangeControl, Button, Modal } = wp.components;
 const { addFilter } = wp.hooks;
-
-// Restrict to specific blocks if desired, or allow all with 'core/image' etc.
-// Allowed blocks restriction removed to support all blocks (including SVG block)
-// const ALLOWED_BLOCKS = ['core/image', 'gutenberg-bem/svg-block', 'core/group'];
-
 
 /**
  * Add attributes to Block registration (Client side)
  * This mirrors the server-side registration
  */
 function addAttributes(settings, name) {
-    // Optionally check if name is in ALLOWED_BLOCKS
-    // For now, let's enable it broadly for flexibility or specific blocks
-    // Restriction removed
-    // if (!ALLOWED_BLOCKS.includes(name)) {
-    //    return settings;
-    // }
-
     if (typeof settings.attributes !== 'undefined') {
         settings.attributes = Object.assign(settings.attributes, {
             transitionId: {
@@ -42,6 +30,11 @@ function addAttributes(settings, name) {
                 default: '',
             },
             transitionColor: {
+                type: 'string',
+                default: '',
+            },
+            // NEW: Animate selector for nested element
+            transitionAnimateSelector: {
                 type: 'string',
                 default: '',
             },
@@ -65,6 +58,19 @@ function addAttributes(settings, name) {
                 type: 'number',
                 default: 0,
             },
+            // NEW: SEO link attributes
+            linkAriaLabel: {
+                type: 'string',
+                default: '',
+            },
+            linkTitle: {
+                type: 'string',
+                default: '',
+            },
+            linkRel: {
+                type: 'string',
+                default: '',
+            },
         });
     }
     return settings;
@@ -72,18 +78,73 @@ function addAttributes(settings, name) {
 addFilter('blocks.registerBlockType', 'wp-logo-explode/add-attributes', addAttributes);
 
 /**
+ * SEO Settings Modal Component
+ */
+function SEOSettingsModal({ attributes, setAttributes, onClose }) {
+    const { linkAriaLabel, linkTitle, linkRel } = attributes;
+
+    return (
+        <Modal
+            title={__('SEO Link Settings', 'wp-logo-explode')}
+            onRequestClose={onClose}
+            className="wp-logo-explode-seo-modal"
+        >
+            <div style={{ minWidth: '400px' }}>
+                <TextControl
+                    label={__('Aria Label', 'wp-logo-explode')}
+                    help={__('Accessible label for screen readers (e.g., "Learn more about our services")', 'wp-logo-explode')}
+                    value={linkAriaLabel}
+                    onChange={(value) => setAttributes({ linkAriaLabel: value })}
+                />
+                <TextControl
+                    label={__('Link Title', 'wp-logo-explode')}
+                    help={__('Tooltip text shown on hover', 'wp-logo-explode')}
+                    value={linkTitle}
+                    onChange={(value) => setAttributes({ linkTitle: value })}
+                />
+                <TextControl
+                    label={__('Link Rel Attribute', 'wp-logo-explode')}
+                    help={__('Relationship attributes (e.g., "nofollow", "sponsored", "noopener")', 'wp-logo-explode')}
+                    value={linkRel}
+                    onChange={(value) => setAttributes({ linkRel: value })}
+                    placeholder="nofollow noopener"
+                />
+                <div style={{ marginTop: '20px', textAlign: 'right' }}>
+                    <Button variant="primary" onClick={onClose}>
+                        {__('Done', 'wp-logo-explode')}
+                    </Button>
+                </div>
+            </div>
+        </Modal>
+    );
+}
+
+/**
  * Add Inspector Controls (UI)
  */
 const withInspectorControls = createHigherOrderComponent((BlockEdit) => {
     return (props) => {
         const { name, attributes, setAttributes } = props;
+        const [isSEOModalOpen, setIsSEOModalOpen] = useState(false);
 
-        // Restriction removed
-        // if (!ALLOWED_BLOCKS.includes(name)) {
-        //    return <BlockEdit {...props} />;
-        // }
+        const {
+            transitionId,
+            transitionRole,
+            transitionLink,
+            transitionColor,
+            transitionAnimateSelector,
+            offsetX,
+            offsetY,
+            durationExpand,
+            durationShrink,
+            scaleExplode,
+            linkAriaLabel,
+            linkTitle,
+            linkRel
+        } = attributes;
 
-        const { transitionId, transitionRole, transitionLink, transitionColor, offsetX, offsetY, durationExpand, durationShrink, scaleExplode } = attributes;
+        // Check if any SEO fields are set
+        const hasSEOSettings = linkAriaLabel || linkTitle || linkRel;
 
         return (
             <Fragment>
@@ -107,13 +168,38 @@ const withInspectorControls = createHigherOrderComponent((BlockEdit) => {
                             onChange={(value) => setAttributes({ transitionRole: value })}
                         />
                         {transitionRole === 'source' && (
-                            <TextControl
-                                label={__('Link URL', 'wp-logo-explode')}
-                                help={__('Where this logo should link to.', 'wp-logo-explode')}
-                                value={transitionLink}
-                                onChange={(value) => setAttributes({ transitionLink: value })}
-                            />
+                            <Fragment>
+                                <TextControl
+                                    label={__('Link URL', 'wp-logo-explode')}
+                                    help={__('Where this block should link to.', 'wp-logo-explode')}
+                                    value={transitionLink}
+                                    onChange={(value) => setAttributes({ transitionLink: value })}
+                                />
+                                <Button
+                                    variant="secondary"
+                                    onClick={() => setIsSEOModalOpen(true)}
+                                    style={{ marginBottom: '16px' }}
+                                >
+                                    {__('SEO Settings', 'wp-logo-explode')}
+                                    {hasSEOSettings && ' ✓'}
+                                </Button>
+                                {isSEOModalOpen && (
+                                    <SEOSettingsModal
+                                        attributes={attributes}
+                                        setAttributes={setAttributes}
+                                        onClose={() => setIsSEOModalOpen(false)}
+                                    />
+                                )}
+                            </Fragment>
                         )}
+
+                        <TextControl
+                            label={__('Animate Selector', 'wp-logo-explode')}
+                            help={__('CSS selector for nested element to animate (e.g., ".my-logo", "#logo-svg"). Leave empty to animate the whole block.', 'wp-logo-explode')}
+                            value={transitionAnimateSelector}
+                            onChange={(value) => setAttributes({ transitionAnimateSelector: value })}
+                            placeholder=".my-nested-svg"
+                        />
 
                         <Fragment>
                             <p style={{ marginTop: '10px', marginBottom: '5px' }}>{__('Transition Color', 'wp-logo-explode')}</p>
@@ -181,14 +267,24 @@ addFilter('editor.BlockEdit', 'wp-logo-explode/with-inspector-controls', withIns
 /**
  * Add data attributes to the wrapper in Editor & Frontend
  * Note: getSaveContent.extraProps applies to the FRONTEND save output.
+ * For dynamic blocks (Kadence, etc.), this won't run - PHP handles it.
  */
 function addSaveProps(extraProps, blockType, attributes) {
-    // Restriction removed
-    // if (!ALLOWED_BLOCKS.includes(blockType.name)) {
-    //    return extraProps;
-    // }
-
-    const { transitionId, transitionRole, transitionLink, transitionColor, offsetX, offsetY, durationExpand, durationShrink, scaleExplode } = attributes;
+    const {
+        transitionId,
+        transitionRole,
+        transitionLink,
+        transitionColor,
+        transitionAnimateSelector,
+        offsetX,
+        offsetY,
+        durationExpand,
+        durationShrink,
+        scaleExplode,
+        linkAriaLabel,
+        linkTitle,
+        linkRel
+    } = attributes;
 
     if (transitionId && transitionRole) {
         extraProps['data-transition-id'] = transitionId;
@@ -199,6 +295,7 @@ function addSaveProps(extraProps, blockType, attributes) {
         }
 
         if (transitionColor) extraProps['data-transition-color'] = transitionColor;
+        if (transitionAnimateSelector) extraProps['data-transition-animate-selector'] = transitionAnimateSelector;
         if (durationExpand) extraProps['data-transition-duration-expand'] = durationExpand;
         if (durationShrink) extraProps['data-transition-duration-shrink'] = durationShrink;
         if (scaleExplode) extraProps['data-transition-scale-explode'] = scaleExplode;
@@ -207,8 +304,11 @@ function addSaveProps(extraProps, blockType, attributes) {
             if (offsetX) extraProps['data-transition-offset-x'] = offsetX;
             if (offsetY) extraProps['data-transition-offset-y'] = offsetY;
         }
+
+        // SEO attributes are handled server-side via fallback link injection
     }
 
     return extraProps;
 }
 addFilter('blocks.getSaveContent.extraProps', 'wp-logo-explode/add-save-props', addSaveProps);
+

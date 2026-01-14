@@ -190,9 +190,85 @@
         // Check if this is an Icon Grid tile (has .icon-grid-gradient)
         const isIconGridTile = !!sourceEl.querySelector('.icon-grid-gradient');
 
+        // NEW: Check for custom animate selector
+        const animateSelector = sourceEl.dataset.transitionAnimateSelector;
+
         let clone, sourceRect, elementToHide;
 
-        if (isIconGridTile) {
+        if (animateSelector) {
+            // CUSTOM SELECTOR: Clone and animate the specified nested element
+            const targetElement = sourceEl.querySelector(animateSelector);
+            if (!targetElement) {
+                console.warn('[WP Logo Explode] Animate selector not found:', animateSelector);
+                // Fallback to whole wrapper
+                clone = sourceEl.cloneNode(true);
+                sourceRect = sourceEl.getBoundingClientRect();
+                elementToHide = sourceEl;
+            } else {
+                // Clone just the target element
+                const targetRect = targetElement.getBoundingClientRect();
+
+                // Check if it's an SVG for special handling
+                if (targetElement.tagName.toLowerCase() === 'svg') {
+                    // SVG: Clone and set up for scaling
+                    const svgClone = targetElement.cloneNode(true);
+                    svgClone.removeAttribute('width');
+                    svgClone.removeAttribute('height');
+                    svgClone.style.width = '100%';
+                    svgClone.style.height = '100%';
+                    svgClone.style.display = 'block';
+                    svgClone.style.maxWidth = 'none';
+                    svgClone.style.maxHeight = 'none';
+
+                    // Check if SVG has viewBox for visual rect calculation
+                    if (svgClone.viewBox?.baseVal?.width) {
+                        try {
+                            const bbox = targetElement.getBBox();
+                            const viewBox = targetElement.viewBox.baseVal;
+
+                            // Calculate visual content rect
+                            sourceRect = {
+                                left: targetRect.left + ((bbox.x - viewBox.x) / viewBox.width) * targetRect.width,
+                                top: targetRect.top + ((bbox.y - viewBox.y) / viewBox.height) * targetRect.height,
+                                width: (bbox.width / viewBox.width) * targetRect.width,
+                                height: (bbox.height / viewBox.height) * targetRect.height
+                            };
+
+                            // Crop viewBox to visual content
+                            svgClone.setAttribute('viewBox', `${bbox.x} ${bbox.y} ${bbox.width} ${bbox.height}`);
+                        } catch (e) {
+                            // getBBox can fail if SVG is hidden; fallback to full rect
+                            sourceRect = targetRect;
+                        }
+                    } else {
+                        sourceRect = targetRect;
+                    }
+
+                    // Wrap SVG in a div for animation
+                    clone = document.createElement('div');
+                    clone.classList.add('transition-clone');
+                    clone.style.margin = '0';
+                    clone.style.transform = 'none';
+                    clone.style.overflow = 'visible';
+                    clone.appendChild(svgClone);
+                } else {
+                    // Non-SVG element: Clone normally
+                    clone = targetElement.cloneNode(true);
+                    clone.classList.add('transition-clone');
+                    clone.style.margin = '0';
+                    clone.style.transform = 'none';
+                    sourceRect = targetRect;
+                }
+
+                elementToHide = targetElement;
+            }
+
+            // Ensure clone has proper styles
+            clone.classList.add('transition-clone');
+            clone.style.margin = '0';
+            clone.style.transform = 'none';
+
+        } else if (isIconGridTile) {
             // ICON GRID: Clone SVG and wrap in div (like regular blocks)
             const gradientSvg = sourceEl.querySelector('.icon-grid-gradient');
             const fullRect = gradientSvg.getBoundingClientRect();
