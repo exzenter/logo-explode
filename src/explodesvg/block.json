@@ -1,0 +1,83 @@
+{
+    "$schema": "https://schemas.wp.org/trunk/block.json",
+    "apiVersion": 3,
+    "name": "wp-logo-explode/explodesvg",
+    "version": "1.0.0",
+    "title": "Explode SVG",
+    "category": "design",
+    "icon": "art",
+    "description": "An SVG block with explode/implode transition effects.",
+    "attributes": {
+        "svgCode": {
+            "type": "string",
+            "default": ""
+        },
+        "width": {
+            "type": "string",
+            "default": "3rem"
+        },
+        "height": {
+            "type": "string",
+            "default": "3rem"
+        },
+        "blockId": {
+            "type": "string",
+            "default": ""
+        },
+        "outlineColor": {
+            "type": "string",
+            "default": "#696969"
+        },
+        "outlineWidth": {
+            "type": "number",
+            "default": 1
+        },
+        "disableOutline": {
+            "type": "boolean",
+            "default": false
+        },
+        "gradientStart": {
+            "type": "string",
+            "default": "#000000"
+        },
+        "gradientEnd": {
+            "type": "string",
+            "default": "#000000"
+        },
+        "gradientAngle": {
+            "type": "number",
+            "default": 45
+        },
+        "useOriginalFill": {
+            "type": "boolean",
+            "default": true
+        },
+        "reverseHover": {
+            "type": "boolean",
+            "default": false
+        },
+        "transitionId": {
+            "type": "string",
+            "default": ""
+        },
+        "alignSelf": {
+            "type": "string",
+            "default": "auto"
+        },
+        "justifySelf": {
+            "type": "string",
+            "default": "auto"
+        }
+    },
+    "supports": {
+        "html": false,
+        "align": true,
+        "spacing": {
+            "margin": true,
+            "padding": true
+        }
+    },
+    "textdomain": "wp-logo-explode",
+    "editorScript": "file:./index.js",
+    "style": "file:./style-index.css"
+}

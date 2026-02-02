@@ -1,0 +1,27 @@
+# Dependencies
+node_modules
+vendor
+
+# Build files
+build
+*.zip
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode
+.idea
+*.sublime-*
+
+# Claude
+.claude
+
+# Environment
+.env
+.env.local

@@ -1,0 +1,144 @@
+/**
+ * Explode SVG Block Styles
+ * Dual-layer: outline (stroke) + gradient (fill)
+ */
+
+.wp-block-wp-logo-explode-explodesvg,
+.wp-block-explodesvg-container {
+	position: relative;
+	display: inline-block;
+	vertical-align: middle;
+
+	svg {
+		display: block;
+		width: 100%;
+		height: 100%;
+		max-width: 100%;
+		max-height: 100%;
+	}
+}
+
+/* Layer containers - stacked */
+.explodesvg-layer-outline,
+.explodesvg-layer-gradient {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	pointer-events: none;
+
+	> * {
+		width: 100%;
+		height: 100%;
+		object-fit: contain;
+	}
+}
+
+/* Outline layer: stroke only, fill transparent */
+.explodesvg-layer-outline {
+	svg,
+	svg * {
+		fill: none !important;
+		stroke: var(--esvg-stroke-color, #696969) !important;
+		stroke-width: var(--esvg-stroke-width, 1px) !important;
+	}
+}
+
+/* Gradient layer: fill visible */
+.explodesvg-layer-gradient {
+	svg,
+	svg * {
+		stroke: none !important;
+	}
+}
+
+/* Default: show gradient (fill), hide outline */
+.wp-block-explodesvg-container:not(.reverse-hover) {
+	.explodesvg-layer-outline {
+		opacity: 0;
+	}
+	.explodesvg-layer-gradient {
+		opacity: 1;
+	}
+}
+
+/* Hover: show outline, hide gradient */
+.wp-block-explodesvg-container:not(.reverse-hover):hover {
+	.explodesvg-layer-outline {
+		opacity: 1;
+	}
+	.explodesvg-layer-gradient {
+		opacity: 0;
+	}
+}
+
+/* Reverse hover: default outline, hover gradient */
+.wp-block-explodesvg-container.reverse-hover {
+	.explodesvg-layer-outline {
+		opacity: 1;
+	}
+	.explodesvg-layer-gradient {
+		opacity: 0;
+	}
+}
+
+.wp-block-explodesvg-container.reverse-hover:hover {
+	.explodesvg-layer-outline {
+		opacity: 0;
+	}
+	.explodesvg-layer-gradient {
+		opacity: 1;
+	}
+}
+
+/* Normal mode: externally hovered state (matches :hover behavior) */
+.wp-block-explodesvg-container:not(.reverse-hover).is-externally-hovered {
+	.explodesvg-layer-outline {
+		opacity: 1;
+	}
+	.explodesvg-layer-gradient {
+		opacity: 0;
+	}
+}
+
+/* Reverse mode: externally hovered state (matches :hover behavior) */
+.wp-block-explodesvg-container.reverse-hover.is-externally-hovered {
+	.explodesvg-layer-outline {
+		opacity: 0;
+	}
+	.explodesvg-layer-gradient {
+		opacity: 1;
+	}
+}
+
+/* Smooth transition */
+.explodesvg-layer-outline,
+.explodesvg-layer-gradient {
+	transition: opacity 0.2s ease;
+}
+
+/* Editor preview */
+.explodesvg-editor-wrapper,
+.explodesvg-editor-preview {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.explodesvg-editor-preview svg {
+	max-width: 100%;
+	max-height: 100%;
+}
+
+/* Alignment helpers for flex/grid containers */
+.wp-block-explodesvg-container {
+	/* Allow alignment to work properly */
+	&[style*="align-self"] {
+		display: inline-flex !important;
+	}
+
+	&[style*="justify-self"] {
+		display: inline-flex !important;
+	}
+}

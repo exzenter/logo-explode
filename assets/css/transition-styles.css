@@ -1,0 +1,96 @@
+/* WP Logo Explode Styles */
+
+.transition-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 99999 !important;
+    /* Extremely high for WP admin bar etc */
+    pointer-events: none;
+    contain: layout style;
+}
+
+.transition-clone {
+    position: absolute;
+    transform-origin: top left;
+    will-change: transform, width, height;
+    shape-rendering: geometricPrecision;
+    pointer-events: none;
+}
+
+/* Ensure nested SVG/IMG fills the clone container */
+.transition-clone svg,
+.transition-clone img {
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    display: block;
+}
+
+/* Force ALL intermediate containers to fill the clone */
+.transition-clone * {
+    max-width: none !important;
+    max-height: none !important;
+}
+
+/* Specifically target wrapper divs inside the clone */
+.transition-clone>*,
+.transition-clone>*>* {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+/* Transition source blocks should have pointer cursor */
+[data-transition-role="source"][data-transition-link] {
+    cursor: pointer;
+    position: relative;
+}
+
+/* Fallback link for no-JS clients */
+.wp-logo-explode-fallback-link {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    text-decoration: none;
+    color: inherit;
+}
+
+/* Hide fallback link when JS is active */
+.js .wp-logo-explode-fallback-link,
+html:not(.no-js) .wp-logo-explode-fallback-link {
+    display: none;
+}
+
+/* Screen reader text (accessibility) */
+.wp-logo-explode-fallback-link .screen-reader-text {
+    border: 0;
+    clip: rect(1px, 1px, 1px, 1px);
+    clip-path: inset(50%);
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    padding: 0;
+    position: absolute;
+    width: 1px;
+    word-wrap: normal !important;
+}
+
+/* ===============================================
+   Linked Icon Grid Tile Styles
+   =============================================== */
+
+/* Linked blocks should have pointer cursor */
+[data-link-icon-grid="true"] {
+    cursor: pointer;
+    position: relative;
+}
+
+/* Active state when hovering (synced with icon grid tile) */
+[data-link-icon-grid="true"].is-icon-grid-linked-active,
+[data-link-icon-grid="true"]:active {
+    /* Add your custom active styling here */
+    /* Example: outline: 2px solid currentColor; */
+}
