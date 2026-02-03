@@ -187,7 +187,7 @@ class WP_Logo_Explode_Blocks_Integration {
 	}
 
 	/**
-	 * Inject a hidden semantic link for no-JS fallback
+	 * Inject an overlay link for proper link behavior (middle-click, right-click, no-JS fallback)
 	 */
 	private function inject_fallback_link( $block_content, $attrs ) {
 		$link_url = esc_url( $attrs['transitionLink'] );
@@ -195,8 +195,14 @@ class WP_Logo_Explode_Blocks_Integration {
 		$link_title = ! empty( $attrs['linkTitle'] ) ? ' title="' . esc_attr( $attrs['linkTitle'] ) . '"' : '';
 		$link_rel = ! empty( $attrs['linkRel'] ) ? ' rel="' . esc_attr( $attrs['linkRel'] ) . '"' : '';
 
+		// Create an overlay link that covers the entire block
+		// This enables:
+		// - Middle mouse button (open in new tab)
+		// - Right-click context menu
+		// - No-JS fallback
+		// - Proper link semantics for SEO and accessibility
 		$fallback_link = sprintf(
-			'<a href="%s" class="wp-logo-explode-fallback-link" aria-label="%s"%s%s><span class="screen-reader-text">%s</span></a>',
+			'<a href="%s" class="wp-logo-explode-overlay-link" aria-label="%s"%s%s><span class="screen-reader-text">%s</span></a>',
 			$link_url,
 			$aria_label,
 			$link_title,
@@ -204,10 +210,40 @@ class WP_Logo_Explode_Blocks_Integration {
 			$aria_label
 		);
 
-		// Insert the fallback link right after the opening tag
+		// Insert the overlay link right after the opening tag
 		$pattern = '/^(\s*<\w+[^>]*>)/';
 		$replacement = '$1' . $fallback_link;
 		$block_content = preg_replace( $pattern, $replacement, $block_content, 1 );
+
+		// Ensure the wrapper has position: relative for the overlay to work
+		// We inject a style attribute or add to existing one
+		$block_content = preg_replace(
+			'/^(\s*<\w+)(\s+[^>]*style="[^"]*")/',
+			'$1$2',
+			$block_content,
+			1,
+			$count
+		);
+
+		if ( $count === 0 ) {
+			// No style attribute found, add position relative via a new style attribute
+			$block_content = preg_replace(
+				'/^(\s*<\w+)(\s+[^>]*)>/',
+				'$1$2 style="position: relative;">',
+				$block_content,
+				1
+			);
+		} else {
+			// Style attribute exists, append position: relative if not present
+			if ( strpos( $block_content, 'position:' ) === false && strpos( $block_content, 'position :' ) === false ) {
+				$block_content = preg_replace(
+					'/^(\s*<\w+\s+[^>]*style=")([^"]*)(")/U',
+					'$1$2 position: relative;$3',
+					$block_content,
+					1
+				);
+			}
+		}
 
 		return $block_content;
 	}

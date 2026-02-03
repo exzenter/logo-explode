@@ -49,23 +49,26 @@
     position: relative;
 }
 
-/* Fallback link for no-JS clients */
-.wp-logo-explode-fallback-link {
+/* Overlay link for proper link behavior (middle-click, right-click, no-JS fallback) */
+.wp-logo-explode-overlay-link {
     position: absolute;
     inset: 0;
     z-index: 5;
     text-decoration: none;
     color: inherit;
+    /* Make the link cover the entire block but remain invisible */
+    display: block;
+    /* Important: Don't set pointer-events: none - we WANT the link to be clickable */
 }
 
-/* Hide fallback link when JS is active */
-.js .wp-logo-explode-fallback-link,
-html:not(.no-js) .wp-logo-explode-fallback-link {
-    display: none;
+/* Focus state for keyboard navigation accessibility */
+.wp-logo-explode-overlay-link:focus {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
 }
 
 /* Screen reader text (accessibility) */
-.wp-logo-explode-fallback-link .screen-reader-text {
+.wp-logo-explode-overlay-link .screen-reader-text {
     border: 0;
     clip: rect(1px, 1px, 1px, 1px);
     clip-path: inset(50%);

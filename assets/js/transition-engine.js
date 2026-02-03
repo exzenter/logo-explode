@@ -105,27 +105,47 @@
         const sources = document.querySelectorAll('[data-transition-role="source"]');
 
         sources.forEach(wrapper => {
-            // The wrapper might NOT be a link itself. It might contain a link, or we make it clickable.
-            // Ideally, the user sets the link in our sidebar, so we handle the click.
             const url = wrapper.dataset.transitionLink;
-            if (url) {
-                wrapper.style.cursor = 'pointer';
-                wrapper.addEventListener('click', (e) => handleSourceClick(e, wrapper, url));
+            if (!url) return;
+
+            wrapper.style.cursor = 'pointer';
+
+            // Find the overlay link (injected by PHP for proper link semantics)
+            const overlayLink = wrapper.querySelector('.wp-logo-explode-overlay-link');
+
+            if (overlayLink) {
+                // We have an overlay link - intercept its clicks for the transition
+                overlayLink.addEventListener('click', (e) => {
+                    // Only intercept normal left-clicks without modifiers
+                    // Let browser handle: Ctrl+Click, Cmd+Click, Shift+Click, Middle-Click
+                    if (e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) {
+                        return; // Let browser handle (new tab, etc.)
+                    }
+
+                    // Intercept for transition animation
+                    e.preventDefault();
+                    handleSourceClick(e, wrapper, url);
+                });
+
+                // For middle-click and other buttons, don't prevent default
+                // The browser will open the link in a new tab naturally
+                overlayLink.addEventListener('auxclick', (e) => {
+                    // Do nothing - let browser handle middle-click naturally
+                });
             } else {
-                // Fallback: Check if it wraps an <a> tag
-                const link = wrapper.querySelector('a');
-                if (link) {
-                    link.addEventListener('click', (e) => {
-                        e.preventDefault();
-                        handleSourceClick(e, wrapper, link.href);
-                    });
-                }
+                // Fallback: No overlay link found (older blocks or edge case)
+                // Handle clicks on the wrapper itself
+                wrapper.addEventListener('click', (e) => handleSourceClick(e, wrapper, url));
+                wrapper.addEventListener('auxclick', (e) => handleSourceClick(e, wrapper, url));
             }
         });
     }
 
     async function handleSourceClick(e, wrapper, url) {
-        if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+        // Allow browser default behavior for:
+        // - Ctrl/Cmd/Shift + Click (new tab/window)
+        // - Middle mouse button (button 1 = open in new tab)
+        if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return;
 
         // Stop Icon Grid or other plugin JS from stealing the click and navigating/animating
         e.preventDefault();
