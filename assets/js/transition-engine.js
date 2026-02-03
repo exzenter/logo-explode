@@ -20,9 +20,10 @@
     let isBackNavigation = false;
     let activeTransitionOverlay = null;
     let transitionAborted = false;
+    let transitionInProgress = false; // FIX: Lock to prevent overlapping transitions
 
     // Timeout for failsafe cleanup (if transition hangs)
-    const TRANSITION_TIMEOUT = 2500; // 2.5 seconds max
+    const TRANSITION_TIMEOUT = 10000; // 10 seconds max
 
     // Default Config (fallback if wpLogoExplodeSettings is missing)
     const defaults = {
@@ -32,7 +33,9 @@
         layoutSettleDelay: 200,
         zIndex: 99999,
         forceScrollTop: true,
-        globalBgColor: ''
+        globalBgColor: '',
+        instantLoad: false,
+        gpuAnimation: false
     };
 
     const rawSettings = window.wpLogoExplodeSettings || {};
@@ -43,7 +46,9 @@
         layoutSettleDelay: parseInt(rawSettings.layoutSettleDelay) || defaults.layoutSettleDelay,
         zIndex: parseInt(rawSettings.zIndex) || defaults.zIndex,
         forceScrollTop: rawSettings.forceScrollTop !== undefined ? (rawSettings.forceScrollTop === '1' || rawSettings.forceScrollTop === true) : defaults.forceScrollTop,
-        globalBgColor: rawSettings.globalBgColor || defaults.globalBgColor
+        globalBgColor: rawSettings.globalBgColor || defaults.globalBgColor,
+        instantLoad: rawSettings.instantLoad === '1' || rawSettings.instantLoad === true,
+        gpuAnimation: rawSettings.gpuAnimation === '1' || rawSettings.gpuAnimation === true
     };
 
     document.addEventListener('DOMContentLoaded', init);
@@ -91,6 +96,7 @@
 
         // Reset state
         transitionAborted = false;
+        transitionInProgress = false; // FIX: Release lock on cleanup
     }
 
     function setupLinkInterception() {
@@ -124,6 +130,12 @@
         // Stop Icon Grid or other plugin JS from stealing the click and navigating/animating
         e.preventDefault();
         e.stopPropagation();
+
+        // FIX: Prevent starting a new transition while one is already in progress
+        if (transitionInProgress) {
+            console.log('[WP Logo Explode] Transition already in progress. Ignoring click.');
+            return;
+        }
 
         const transitionId = wrapper.dataset.transitionId;
         if (!transitionId) {
@@ -178,6 +190,9 @@
             window.location.href = url;
             return;
         }
+
+        // FIX: Set lock at start of transition
+        transitionInProgress = true;
 
         // FIX: Reset abort flag at start of new transition
         transitionAborted = false;
@@ -358,9 +373,10 @@
             const viewBox = gradientSvg.viewBox.baseVal;
 
             // Calculate where the visual content actually is on screen
+            // FIX: Account for viewBox offset (vb.x, vb.y) in position calculation
             const visualRect = {
-                left: fullRect.left + (bbox.x / viewBox.width) * fullRect.width,
-                top: fullRect.top + (bbox.y / viewBox.height) * fullRect.height,
+                left: fullRect.left + ((bbox.x - viewBox.x) / viewBox.width) * fullRect.width,
+                top: fullRect.top + ((bbox.y - viewBox.y) / viewBox.height) * fullRect.height,
                 width: (bbox.width / viewBox.width) * fullRect.width,
                 height: (bbox.height / viewBox.height) * fullRect.height
             };
@@ -432,8 +448,52 @@
         // Style the clone for animation
         clone.style.pointerEvents = 'none';
 
-        // 2. Position Clone
-        setCloneStyles(clone, sourceRect);
+        // 2. Position Clone - different setup for GPU vs standard animation
+        if (config.gpuAnimation) {
+            // GPU MODE: Fixed size, use transform for position/scale
+            clone.style.position = 'absolute';
+            clone.style.width = `${sourceRect.width}px`;
+            clone.style.height = `${sourceRect.height}px`;
+            clone.style.left = '0px';
+            clone.style.top = '0px';
+            clone.style.transformOrigin = '0 0';
+            clone.style.willChange = 'transform';
+            clone.style.transform = `translate(${sourceRect.left}px, ${sourceRect.top}px) scale(1)`;
+
+            // FIX: Normalize SVG viewBox to prevent offset issues during scaling
+            // When viewBox doesn't start at 0,0 (e.g., "16 18 48 48"), the offset gets scaled
+            const cloneSvg = clone.querySelector('svg');
+            if (cloneSvg && cloneSvg.viewBox?.baseVal) {
+                const vb = cloneSvg.viewBox.baseVal;
+
+                // Force SVG to stretch to fill container exactly (no letterboxing)
+                cloneSvg.setAttribute('preserveAspectRatio', 'none');
+
+                if (vb.x !== 0 || vb.y !== 0) {
+                    console.log('[WP Logo Explode] Normalizing SVG viewBox:', {
+                        original: `${vb.x} ${vb.y} ${vb.width} ${vb.height}`,
+                        normalized: `0 0 ${vb.width} ${vb.height}`
+                    });
+
+                    // Extract defs separately (they shouldn't be transformed)
+                    const defs = cloneSvg.querySelector('defs');
+                    const defsHtml = defs ? defs.outerHTML : '';
+                    if (defs) defs.remove();
+
+                    // Wrap remaining content in a group and translate to compensate for viewBox offset
+                    const innerContent = cloneSvg.innerHTML;
+                    cloneSvg.innerHTML = defsHtml + `<g transform="translate(${-vb.x}, ${-vb.y})">${innerContent}</g>`;
+                    cloneSvg.setAttribute('viewBox', `0 0 ${vb.width} ${vb.height}`);
+                }
+            }
+
+            console.log('[WP Logo Explode] GPU Animation mode enabled');
+        } else {
+            // STANDARD MODE: Animate width/height/left/top
+            clone.style.willChange = 'width, height, left, top';
+            clone.style.contain = 'layout style';
+            setCloneStyles(clone, sourceRect);
+        }
 
         // 3. Hide Original
         elementToHide.style.opacity = '0';
@@ -442,62 +502,133 @@
         const viewportW = window.innerWidth;
         const viewportH = window.innerHeight;
 
-        const blockScale = sourceEl.closest('[data-transition-scale-explode]')?.dataset.transitionScaleExplode;
+        // In instantLoad mode, ignore block-level overrides for consistent fast behavior
+        const blockScale = config.instantLoad ? null : sourceEl.closest('[data-transition-scale-explode]')?.dataset.transitionScaleExplode;
         const scaleFactor = (blockScale && !isNaN(parseFloat(blockScale)) && parseFloat(blockScale) !== 0) ? parseFloat(blockScale) : config.scaleExplode;
 
         const explodeW = sourceRect.width * scaleFactor;
         const explodeH = sourceRect.height * scaleFactor;
 
+        // Calculate explode position (center of viewport)
+        const explodeX = viewportW / 2 - explodeW / 2;
+        const explodeY = viewportH / 2 - explodeH / 2;
+
         const explodeStyles = {
             width: `${explodeW}px`,
             height: `${explodeH}px`,
-            left: `${viewportW / 2 - explodeW / 2}px`,
-            top: `${viewportH / 2 - explodeH / 2}px`
+            left: `${explodeX}px`,
+            top: `${explodeY}px`
         };
 
-        const blockDurExpand = sourceEl.closest('[data-transition-duration-expand]')?.dataset.transitionDurationExpand;
+        // In instantLoad mode, ignore block-level duration overrides
+        const blockDurExpand = config.instantLoad ? null : sourceEl.closest('[data-transition-duration-expand]')?.dataset.transitionDurationExpand;
         const durExpand = (blockDurExpand && !isNaN(parseInt(blockDurExpand)) && parseInt(blockDurExpand) !== 0) ? parseInt(blockDurExpand) : config.durationExpand;
 
-        await animateTo(clone, explodeStyles, durExpand, 'cubic-bezier(0.2, 0.9, 0.2, 1)');
+        // Choose animation method based on gpuAnimation setting
+        const doExpandAnimation = config.gpuAnimation
+            ? () => animateWithTransform(clone, sourceRect.left, sourceRect.top, 1, explodeX, explodeY, scaleFactor, durExpand, 'cubic-bezier(0.2, 0.9, 0.2, 1)')
+            : () => animateTo(clone, explodeStyles, durExpand, 'cubic-bezier(0.2, 0.9, 0.2, 1)');
 
-        // FIX: Check if transition was aborted (e.g., tab switched)
-        if (transitionAborted) {
-            clearTimeout(failsafeTimeout);
-            return;
-        }
+        // INSTANT LOAD MODE: Run expand animation AND content fetch in PARALLEL
+        if (config.instantLoad) {
+            console.log('[WP Logo Explode] Instant Load mode: fetching content in parallel with animation');
 
-        // 5. Fetch New Page
-        // Use View Transition API for content if available, else manual
-        if (document.startViewTransition) {
-            const transition = document.startViewTransition(async () => {
-                await loadNewContent(url, transitionId);
+            // Start both operations simultaneously
+            const expandPromise = doExpandAnimation();
+            const fetchPromise = loadNewContent(url, transitionId);
 
-                // Find Target in New DOM and hide the correct element
-                const targetWrapper = document.querySelector(`[data-transition-id="${transitionId}"][data-transition-role="target"]`);
-                if (targetWrapper) {
-                    const isTargetIconGrid = !!targetWrapper.querySelector('.icon-grid-gradient');
-                    const targetElement = isTargetIconGrid
-                        ? targetWrapper.querySelector('.icon-grid-gradient')
-                        : targetWrapper;
-                    if (targetElement) targetElement.style.opacity = '0';
-                }
-            });
-            // FIX: Add timeout for View Transition API in case it hangs
-            const viewTransitionTimeout = new Promise(resolve => setTimeout(resolve, 5000));
-            await Promise.race([transition.ready, viewTransitionTimeout]);
+            // Wait for BOTH to complete
+            await Promise.all([expandPromise, fetchPromise]);
+
+            // After parallel load, ensure clone is still properly positioned at explode state
+            if (config.gpuAnimation) {
+                clone.style.transform = `translate(${explodeX}px, ${explodeY}px) scale(${scaleFactor})`;
+            } else {
+                Object.assign(clone.style, explodeStyles);
+            }
         } else {
+            // NORMAL MODE: Sequential - animate first, then fetch
+            await doExpandAnimation();
+
+            // FIX: Check if transition was aborted (e.g., tab switched)
+            if (transitionAborted) {
+                clearTimeout(failsafeTimeout);
+                transitionInProgress = false; // FIX: Release lock on abort
+                return;
+            }
+
+            // Fetch New Page
             await loadNewContent(url, transitionId);
         }
 
+        // FIX: Check if transition was aborted after async operations
+        if (transitionAborted) {
+            clearTimeout(failsafeTimeout);
+            transitionInProgress = false; // FIX: Release lock on abort
+            return;
+        }
+
+        // Hide target element in preparation for shrink animation
+        const preTargetWrapper = document.querySelector(`[data-transition-id="${transitionId}"][data-transition-role="target"]`);
+        if (preTargetWrapper) {
+            const isTargetIconGrid = !!preTargetWrapper.querySelector('.icon-grid-gradient');
+            const targetElement = isTargetIconGrid
+                ? preTargetWrapper.querySelector('.icon-grid-gradient')
+                : preTargetWrapper;
+            if (targetElement) targetElement.style.opacity = '0';
+        }
+
         // EARLY SIGNAL: Content is loaded, trigger re-initialization before shrink animation
+        // This ensures the page is fully initialized when the logo scales down into place
         console.log('[WP Logo Explode] Content loaded. Dispatching early event and polling for hooks.');
         window.dispatchEvent(new Event('wpLogoExplodeTransitionComplete'));
         pollForHook();
 
         // 6. Animate Clone to Target
-        // Wait for the double-scroll reset and layout to fully settle
-        await wait(config.layoutSettleDelay);
-        await requestFrame();
+        // Give browser time to:
+        // 1. Execute all the scripts that were re-inserted after content swap
+        // 2. Calculate layout
+        // 3. Let the main thread settle before starting animation
+        if (config.instantLoad) {
+            // In instantLoad mode: minimal delay but enough for scripts to settle
+            // Use setTimeout(0) to yield to the event loop, then 2 frames for layout
+            await new Promise(resolve => setTimeout(resolve, 0));
+            await requestFrame();
+            await requestFrame();
+        } else {
+            await wait(config.layoutSettleDelay);
+            await requestFrame();
+        }
+
+        // Verify clone is still valid after content swap
+        if (!clone.isConnected) {
+            console.warn('[WP Logo Explode] Clone was disconnected during content swap. Aborting shrink animation.');
+            clearTimeout(failsafeTimeout);
+
+            // FIX: Ensure target is visible even though animation was aborted
+            const targetWrapper = document.querySelector(`[data-transition-id="${transitionId}"][data-transition-role="target"]`);
+            if (targetWrapper) {
+                targetWrapper.style.opacity = '';
+                // Also show any nested element that might have been hidden
+                const isTargetIconGrid = !!targetWrapper.querySelector('.icon-grid-gradient');
+                if (isTargetIconGrid) {
+                    const targetSvg = targetWrapper.querySelector('.icon-grid-gradient');
+                    if (targetSvg) targetSvg.style.opacity = '';
+                }
+            }
+
+            emergencyCleanup(); // This also releases transitionInProgress lock
+            return;
+        }
+
+        // Ensure clone is at correct explode position before shrink animation
+        // Content swap may have affected the transform
+        if (config.gpuAnimation) {
+            clone.style.transform = `translate(${explodeX}px, ${explodeY}px) scale(${scaleFactor})`;
+        } else {
+            Object.assign(clone.style, explodeStyles);
+        }
+
         // Only works if we successfully loaded the new DOM and found the target
         const targetWrapper = document.querySelector(`[data-transition-id="${transitionId}"][data-transition-role="target"]`);
 
@@ -619,17 +750,41 @@
                 const offsetX = targetWrapper.dataset.transitionOffsetX ? parseFloat(targetWrapper.dataset.transitionOffsetX) : 0;
                 const offsetY = targetWrapper.dataset.transitionOffsetY ? parseFloat(targetWrapper.dataset.transitionOffsetY) : 0;
 
+                const finalX = targetRect.left + offsetX;
+                const finalY = targetRect.top + offsetY;
                 const finalStyles = {
                     width: `${targetRect.width}px`,
                     height: `${targetRect.height}px`,
-                    left: `${targetRect.left + offsetX}px`,
-                    top: `${targetRect.top + offsetY}px`
+                    left: `${finalX}px`,
+                    top: `${finalY}px`
                 };
 
-                const blockDurShrink = sourceEl.closest('[data-transition-duration-shrink]')?.dataset.transitionDurationShrink;
+                // In instantLoad mode, ignore block-level duration overrides
+                const blockDurShrink = config.instantLoad ? null : sourceEl.closest('[data-transition-duration-shrink]')?.dataset.transitionDurationShrink;
                 const durShrink = (blockDurShrink && !isNaN(parseInt(blockDurShrink)) && parseInt(blockDurShrink) !== 0) ? parseInt(blockDurShrink) : config.durationShrink;
 
-                await animateTo(clone, finalStyles, durShrink, 'cubic-bezier(0.2, 0, 0.2, 1)');
+                // Shrink animation - GPU or standard
+                if (config.gpuAnimation) {
+                    // GPU MODE: Use transform with separate scaleX/scaleY for exact sizing
+                    const targetScaleX = targetRect.width / sourceRect.width;
+                    const targetScaleY = targetRect.height / sourceRect.height;
+
+                    console.log('[WP Logo Explode] GPU Shrink:', {
+                        from: { x: explodeX, y: explodeY, scale: scaleFactor },
+                        to: { x: finalX, y: finalY, scaleX: targetScaleX, scaleY: targetScaleY },
+                        targetRect: { w: targetRect.width, h: targetRect.height, l: targetRect.left, t: targetRect.top },
+                        sourceRect: { w: sourceRect.width, h: sourceRect.height }
+                    });
+
+                    await animateWithTransformXY(clone, explodeX, explodeY, scaleFactor, scaleFactor, finalX, finalY, targetScaleX, targetScaleY, durShrink, 'cubic-bezier(0.2, 0, 0.2, 1)');
+                } else {
+                    // STANDARD MODE: Animate width/height/left/top
+                    await animateTo(clone, finalStyles, durShrink, 'cubic-bezier(0.2, 0, 0.2, 1)');
+                }
+
+                // FIX: Clear failsafe timeout IMMEDIATELY after successful animation
+                // BEFORE any hooks/events that might take a long time
+                clearTimeout(failsafeTimeout);
 
                 // Show the WRAPPER again
                 targetWrapper.style.opacity = '';
@@ -648,6 +803,9 @@
             console.warn('[WP Logo Explode] Target element not found for transition:', transitionId);
             console.warn('[WP Logo Explode] Expected: [data-transition-id="' + transitionId + '"][data-transition-role="target"]');
 
+            // Clear timeout before fadeout
+            clearTimeout(failsafeTimeout);
+
             // Fade out clone gracefully
             await new Promise(resolve => {
                 const fadeAnim = clone.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300 });
@@ -655,13 +813,24 @@
                 // FIX: Timeout fallback in case animation doesn't fire onfinish
                 setTimeout(resolve, 400);
             });
+
+            // Still dispatch events so page initializes correctly
+            console.log('[WP Logo Explode] Dispatching events after fadeout (no target found).');
+            window.dispatchEvent(new Event('wpLogoExplodeTransitionComplete'));
+            pollForHook();
         }
 
-        // FIX: Clear failsafe timeout on successful completion
-        clearTimeout(failsafeTimeout);
+        // Clean up will-change to free GPU memory
+        clone.style.willChange = 'auto';
+        if (config.gpuAnimation) {
+            clone.style.transform = 'none';
+        }
 
         // FIX: Clear global overlay reference
         activeTransitionOverlay = null;
+
+        // FIX: Release transition lock
+        transitionInProgress = false;
 
         overlay.remove();
     }
@@ -756,14 +925,18 @@
             });
 
             // --- 2. Update Body Content ---
-            // Preserve Overlay
-            const overlay = document.querySelector('.transition-overlay');
-            if (overlay) document.body.removeChild(overlay);
+            // Preserve Overlay - use global reference for reliability
+            const overlay = activeTransitionOverlay || document.querySelector('.transition-overlay');
+            if (overlay && overlay.parentNode) {
+                overlay.parentNode.removeChild(overlay);
+            }
 
             document.body.innerHTML = newDoc.body.innerHTML;
 
-            // Restore Overlay
-            if (overlay) document.body.appendChild(overlay);
+            // Restore Overlay - ensure it's appended back to body
+            if (overlay) {
+                document.body.appendChild(overlay);
+            }
 
             // --- 3. Execute Scripts from New Body ---
             const newScripts = document.body.querySelectorAll('script');
@@ -861,7 +1034,7 @@
 
         } catch (err) {
             console.error('[WP Logo Explode] Transition Failed:', err);
-            // FIX: Cleanup overlay before fallback navigation
+            // FIX: Cleanup overlay before fallback navigation (also releases lock)
             emergencyCleanup();
             window.location.href = url; // Fallback
         }
@@ -966,9 +1139,23 @@
             const finish = () => {
                 if (resolved) return;
                 resolved = true;
+                // Cancel animation to free resources
+                if (animation) {
+                    try { animation.cancel(); } catch (e) {}
+                }
                 Object.assign(element.style, styles);
                 resolve();
             };
+
+            // Check if element is still in DOM
+            // Note: We only check isConnected, not offsetParent, because elements inside
+            // position:fixed overlays may have null offsetParent but still be visible
+            if (!element.isConnected) {
+                console.warn('[WP Logo Explode] Animation target not connected to DOM. Skipping animation.');
+                Object.assign(element.style, styles);
+                resolve();
+                return;
+            }
 
             const animation = element.animate([
                 {
@@ -985,10 +1172,107 @@
             });
 
             animation.onfinish = finish;
+            animation.oncancel = finish;
 
             // FIX: Timeout fallback in case onfinish never fires
             // (e.g., element removed, tab hidden, browser quirk)
-            setTimeout(finish, safeDuration + 500);
+            // Reduced buffer from 500ms to 100ms for faster recovery
+            setTimeout(finish, safeDuration + 100);
+        });
+    }
+
+    /**
+     * GPU-accelerated animation using transform (scale + translate)
+     * Runs on compositor thread, independent of main thread JavaScript
+     *
+     * @param {HTMLElement} element - The element to animate
+     * @param {number} fromX - Start X position
+     * @param {number} fromY - Start Y position
+     * @param {number} fromScale - Start scale (1 = original size)
+     * @param {number} toX - End X position
+     * @param {number} toY - End Y position
+     * @param {number} toScale - End scale
+     * @param {number} duration - Animation duration in ms
+     * @param {string} easing - CSS easing function
+     */
+    function animateWithTransform(element, fromX, fromY, fromScale, toX, toY, toScale, duration, easing) {
+        const safeDuration = (isNaN(duration) || duration < 0) ? 0 : duration;
+
+        return new Promise(resolve => {
+            let resolved = false;
+
+            const finish = () => {
+                if (resolved) return;
+                resolved = true;
+                if (animation) {
+                    try { animation.cancel(); } catch (e) {}
+                }
+                // Set final transform
+                element.style.transform = `translate(${toX}px, ${toY}px) scale(${toScale})`;
+                resolve();
+            };
+
+            if (!element.isConnected) {
+                console.warn('[WP Logo Explode] GPU animation target not connected. Skipping.');
+                element.style.transform = `translate(${toX}px, ${toY}px) scale(${toScale})`;
+                resolve();
+                return;
+            }
+
+            const animation = element.animate([
+                { transform: `translate(${fromX}px, ${fromY}px) scale(${fromScale})` },
+                { transform: `translate(${toX}px, ${toY}px) scale(${toScale})` }
+            ], {
+                duration: safeDuration,
+                easing: easing,
+                fill: 'forwards'
+            });
+
+            animation.onfinish = finish;
+            animation.oncancel = finish;
+            setTimeout(finish, safeDuration + 100);
+        });
+    }
+
+    /**
+     * GPU-accelerated animation with separate X/Y scaling for exact target sizing
+     * Uses scale(scaleX, scaleY) for non-uniform scaling
+     */
+    function animateWithTransformXY(element, fromX, fromY, fromScaleX, fromScaleY, toX, toY, toScaleX, toScaleY, duration, easing) {
+        const safeDuration = (isNaN(duration) || duration < 0) ? 0 : duration;
+
+        return new Promise(resolve => {
+            let resolved = false;
+
+            const finish = () => {
+                if (resolved) return;
+                resolved = true;
+                if (animation) {
+                    try { animation.cancel(); } catch (e) {}
+                }
+                element.style.transform = `translate(${toX}px, ${toY}px) scale(${toScaleX}, ${toScaleY})`;
+                resolve();
+            };
+
+            if (!element.isConnected) {
+                console.warn('[WP Logo Explode] GPU animation target not connected. Skipping.');
+                element.style.transform = `translate(${toX}px, ${toY}px) scale(${toScaleX}, ${toScaleY})`;
+                resolve();
+                return;
+            }
+
+            const animation = element.animate([
+                { transform: `translate(${fromX}px, ${fromY}px) scale(${fromScaleX}, ${fromScaleY})` },
+                { transform: `translate(${toX}px, ${toY}px) scale(${toScaleX}, ${toScaleY})` }
+            ], {
+                duration: safeDuration,
+                easing: easing,
+                fill: 'forwards'
+            });
+
+            animation.onfinish = finish;
+            animation.oncancel = finish;
+            setTimeout(finish, safeDuration + 100);
         });
     }
 

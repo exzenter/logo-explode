@@ -54,6 +54,8 @@ function wp_logo_explode_enqueue_assets() {
 		'zIndex'           => 99999,
 		'forceScrollTop'   => true,
 		'globalBgColor'    => '',
+		'instantLoad'      => false,
+		'gpuAnimation'     => false,
 	);
 	$settings = array_merge( $defaults, $options );
 
@@ -132,6 +134,20 @@ function wp_logo_explode_settings_page_html() {
 					<td>
 						<input type="checkbox" name="wp_logo_explode_settings[forceScrollTop]" value="1" <?php checked( $options['forceScrollTop'] ?? true, true ); ?> />
 						<p class="description"><?php _e( 'Recommended to ensure the logo positions correctly on the new page.', 'wp-logo-explode' ); ?></p>
+					</td>
+				</tr>
+				<tr valign="top">
+					<th scope="row"><?php _e( 'Instant Load Mode', 'wp-logo-explode' ); ?></th>
+					<td>
+						<input type="checkbox" name="wp_logo_explode_settings[instantLoad]" value="1" <?php checked( $options['instantLoad'] ?? false, true ); ?> />
+						<p class="description"><?php _e( 'Loads content in parallel with the expand animation for fastest possible page load. Ignores per-block timing overrides.', 'wp-logo-explode' ); ?></p>
+					</td>
+				</tr>
+				<tr valign="top">
+					<th scope="row"><?php _e( 'GPU Animation Mode', 'wp-logo-explode' ); ?></th>
+					<td>
+						<input type="checkbox" name="wp_logo_explode_settings[gpuAnimation]" value="1" <?php checked( $options['gpuAnimation'] ?? false, true ); ?> />
+						<p class="description"><?php _e( 'Uses transform (scale/translate) instead of width/height for smoother animations. Runs on GPU compositor thread, independent of JavaScript. May appear slightly less sharp at extreme scales.', 'wp-logo-explode' ); ?></p>
 					</td>
 				</tr>
 			</table>
