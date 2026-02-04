@@ -56,6 +56,7 @@ function wp_logo_explode_enqueue_assets() {
 		'globalBgColor'    => '',
 		'instantLoad'      => false,
 		'gpuAnimation'     => false,
+		'disableTransitions' => false,
 	);
 	$settings = array_merge( $defaults, $options );
 
@@ -148,6 +149,13 @@ function wp_logo_explode_settings_page_html() {
 					<td>
 						<input type="checkbox" name="wp_logo_explode_settings[gpuAnimation]" value="1" <?php checked( $options['gpuAnimation'] ?? false, true ); ?> />
 						<p class="description"><?php _e( 'Uses transform (scale/translate) instead of width/height for smoother animations. Runs on GPU compositor thread, independent of JavaScript. May appear slightly less sharp at extreme scales.', 'wp-logo-explode' ); ?></p>
+					</td>
+				</tr>
+				<tr valign="top">
+					<th scope="row"><?php _e( 'Disable All Transitions', 'wp-logo-explode' ); ?></th>
+					<td>
+						<input type="checkbox" name="wp_logo_explode_settings[disableTransitions]" value="1" <?php checked( $options['disableTransitions'] ?? false, true ); ?> />
+						<p class="description"><?php _e( 'Completely disables all animation transitions. Links will load instantly without any animation delays.', 'wp-logo-explode' ); ?></p>
 					</td>
 				</tr>
 			</table>

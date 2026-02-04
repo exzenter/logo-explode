@@ -35,7 +35,8 @@
         forceScrollTop: true,
         globalBgColor: '',
         instantLoad: false,
-        gpuAnimation: false
+        gpuAnimation: false,
+        disableTransitions: false
     };
 
     const rawSettings = window.wpLogoExplodeSettings || {};
@@ -48,12 +49,19 @@
         forceScrollTop: rawSettings.forceScrollTop !== undefined ? (rawSettings.forceScrollTop === '1' || rawSettings.forceScrollTop === true) : defaults.forceScrollTop,
         globalBgColor: rawSettings.globalBgColor || defaults.globalBgColor,
         instantLoad: rawSettings.instantLoad === '1' || rawSettings.instantLoad === true,
-        gpuAnimation: rawSettings.gpuAnimation === '1' || rawSettings.gpuAnimation === true
+        gpuAnimation: rawSettings.gpuAnimation === '1' || rawSettings.gpuAnimation === true,
+        disableTransitions: rawSettings.disableTransitions === '1' || rawSettings.disableTransitions === true
     };
 
     document.addEventListener('DOMContentLoaded', init);
 
     function init() {
+        // If transitions are disabled, skip all initialization
+        if (config.disableTransitions) {
+            console.log('[WP Logo Explode] Transitions are disabled. Links will function normally.');
+            return;
+        }
+
         // Check URL state for active transition
         const urlParams = new URLSearchParams(window.location.search);
         activeTransitionId = urlParams.get('transition_id') || (history.state && history.state.transitionId);
